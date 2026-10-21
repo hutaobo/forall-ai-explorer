@@ -23,6 +23,9 @@ one hour. AI calls revalidate membership, the live FORALL revision and existing
 FORALL quotas through the platform; questions and API keys are not sent to that
 quota endpoint. The platform public verification key is fetched from a fixed
 HTTPS endpoint. Anonymous visitors cannot reach charts or shared-key AI calls.
+The verified creator has a separate administrator self-test path: their own AI
+requests use their connection directly, because existing marketplace rules
+exclude creator self-calls. Those marketplace rules and member quotas stay intact.
 
 Attach private persistent project storage at `/home/data`. The verified owner
 may configure the shared OpenLLM key through the administrator expander, which

@@ -18,6 +18,7 @@ AGENT = 'a92604df-ec7c-462c-a246-32e179d11b8f'
 def private_root():
     root = Path(os.environ.get('FORALL_PRIVATE_ROOT', '/home/data/forall-private'))
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(root,0o700)
     return root
 
 def request_json(path, body=None):
@@ -94,6 +95,7 @@ def gate(st):
         st.link_button('Open through Seekyoo',PLATFORM+'/api/play/tools/forall/launch')
         st.stop()
     os.environ['OPENLLM_KEY_FILE']=str(private_root()/'openllm-key')
+    if (private_root()/'openllm-key').is_file(): os.chmod(private_root()/'openllm-key',0o600)
     st.caption('Seekyoo member session · AI provided by the administrator · session valid for up to one hour')
     if identity['claims']['admin']:
         with st.expander('Administrator: OpenLLM connection'):
@@ -108,7 +110,10 @@ def gate(st):
 
 @contextmanager
 def hosted_request(identity, question):
-    if identity is None:
+    # The existing marketplace deliberately excludes self-calls. The verified
+    # owner may test their own shared connection without impersonating a member
+    # or changing that marketplace policy. Member calls retain its quotas.
+    if identity is None or identity['claims']['admin']:
         yield
         return
     token=identity['token']
