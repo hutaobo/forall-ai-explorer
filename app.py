@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy import stats
-from core import load, samples, compare, embedding, chat, explain_result, UNITS, DOI
+from core import load, samples, compare, embedding, chat, explain_result, validate_controls, GLOSSARY, UNITS, DOI
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
 st.title('FORALL · AI Explorer')
@@ -110,8 +110,10 @@ with right:
     prompt=st.text_area('Ask / 操作或解释',placeholder='绘制 BCL2 蛋白表达图，选择 T-ALL；或解释当前图中的趋势。')
     if st.button('AI: suggest controls'):
         try:
-            suggestion=chat([{'role':'system','content':'Return JSON with only kind (protein/drug), module (Profile/Pairwise/Group comparison/PCA / UMAP/Data tables), feature, groups (array), explanation. Suggest controls for this public FORALL explorer. Do not invent results or executable code. Available groups: '+json.dumps(group_names)}, {'role':'user','content':prompt}],True,session_key)
-            st.session_state['suggestion']=json.loads(suggestion)
+            group_options={k:metadata[k].group.unique().tolist() for k in metadata}
+            instruction=GLOSSARY+' Translate the user request into WEB INTERFACE SETTINGS only, not laboratory controls. Return exactly kind (protein/drug), module (Profile/Pairwise/Group comparison/PCA / UMAP/Data tables), feature, groups (array). No explanation, extra fields, experimental design, drug mechanisms, IC50 or results. For all groups use every group AVAILABLE IN THE REQUESTED LAYER. Available groups per layer: '+json.dumps(group_options)
+            suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
+            st.session_state['suggestion']=validate_controls(suggestion,frames,metadata)
         except Exception:st.error('OpenLLM did not return valid controls. No analysis changed.')
     if 'suggestion' in st.session_state:
         plan=st.session_state['suggestion'];st.json(plan)

@@ -123,6 +123,19 @@ def embedding(frame, method, features, neighbors, distance, seed):
     return pd.DataFrame(xy,index=matrix.index,columns=['axis1','axis2']), {'method':method,'features':matrix.shape[1],
         'seed':seed,'scaling':'published values, centered for PCA; no unit variance scaling','missing':'drop incomplete features',**extra}
 
+def validate_controls(raw, frames, metadata):
+    """Return only executable UI fields; never display model free-form extras."""
+    plan = json.loads(raw) if isinstance(raw, str) else raw
+    kind, module = plan.get('kind'), plan.get('module')
+    if kind not in frames or kind not in metadata: raise ValueError('Unknown layer')
+    if module not in ['Profile','Pairwise','Group comparison','PCA / UMAP','Data tables']: raise ValueError('Unknown module')
+    feature = plan.get('feature')
+    if feature is not None and feature not in frames[kind].index: raise ValueError('Unknown feature')
+    available = metadata[kind].group.unique().tolist()
+    groups = plan.get('groups') or available
+    if not isinstance(groups,list) or any(not isinstance(g,str) or g not in available for g in groups): raise ValueError('Unknown groups')
+    return {'kind':kind,'module':module,'groups':list(dict.fromkeys(groups)),**({'feature':feature} if feature else {})}
+
 def chat(messages, json_mode=False, api_key=None):
     import urllib.request, urllib.error
     key = api_key or os.environ.get('SCILIFELAB_OPENLLM_API_KEY','')
