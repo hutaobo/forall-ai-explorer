@@ -98,7 +98,7 @@ with left:
         st.dataframe(result,hide_index=True);fig=None
     if fig is not None:
         fig.update_layout(template='plotly_white',font_family='Arial',height=530,legend_title_text='Group')
-        st.plotly_chart(fig,width='stretch',config={'toImageButtonOptions':{'format':'svg'}})
+        st.plotly_chart(fig,use_container_width=True,config={'toImageButtonOptions':{'format':'svg'}})
         st.download_button('Download interactive HTML',fig.to_html(include_plotlyjs=True),'forall-plot.html','text/html')
     st.dataframe(result,width='stretch')
     st.download_button('Download data CSV',result.to_csv(index=True),'forall-data.csv','text/csv')
