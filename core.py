@@ -19,15 +19,24 @@ a pooled control, not RNA expression. A table of cell lines supplies no error ba
 explicitly computed and supplied. A higher sDSS is a higher published score; it does not establish clinical efficacy.'''
 
 def explain_result(summary, question, api_key=None):
-    text=chat([{'role':'system','content':GLOSSARY+' Explain the supplied computed public FORALL result in the user language. '
-        'Use only supplied numerical facts. Distinguish observation, hypothesis and limitations. Preview is partial. '
-        'Cite supplied DOI. Never invent tests, values or statistical significance.'},
-        {'role':'user','content':question+'\n'+json.dumps(summary,ensure_ascii=False)}],api_key=api_key)
-    # Fail visibly on known identifier/metric confusions; never silently show them as scientific conclusions.
-    lower=text.casefold()
-    if any(term in lower for term in ('scaled drug sensitivity','standard error of the mean','均值的标准误','缩放后的药物敏感性')):
-        raise ValueError('Model confused the data dictionary; explanation withheld, computed values unchanged.')
-    return text
+    system=GLOSSARY+' Return JSON only: {"sentences":["...","..."]}. At most three short factual sentences in the user language. '
+    system+='Only describe the supplied table values and parameters. No extra background, drug mechanisms, cell-line genotypes, growth claims, treatment advice, or significance claims. '
+    system+='A numerically higher score is simply higher, never "significantly higher". State that significance cannot be established from profile values alone. '
+    system+='When the preview is partial, say it covers only the supplied preview. Cite the supplied DOI.'
+    messages=[{'role':'system','content':system},{'role':'user','content':question+'\n'+json.dumps(summary,ensure_ascii=False)}]
+    forbidden=('scaled drug sensitivity','standard error of the mean','均值的标准误','缩放后的药物敏感性',
+               '刺激细胞生长','促进生长','显著高于','无统计学意义','无显著效应','不显著','significantly higher','stimulates growth')
+    for attempt in range(2):
+        raw=chat(messages,True,api_key)
+        try:
+            sentences=json.loads(raw)['sentences']
+            if not isinstance(sentences,list) or not 1<=len(sentences)<=3 or any(not isinstance(x,str) for x in sentences): raise ValueError()
+            text='\n\n'.join(sentences)
+            if any(t in text.casefold() for t in forbidden): raise ValueError()
+            return text
+        except (ValueError,KeyError,TypeError):
+            messages.append({'role':'user','content':'Previous output violated the evidence rules. Return only 2 short factual sentences about actual numeric values and lack of uncertainty information. No biological interpretation.'})
+    raise ValueError('Model explanation failed evidence checks; computed values unchanged.')
 
 def load(root):
     root = Path(root)
