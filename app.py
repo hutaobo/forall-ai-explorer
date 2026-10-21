@@ -101,7 +101,7 @@ with left:
         st.plotly_chart(fig,use_container_width=True,config={'toImageButtonOptions':{'format':'svg'}})
         st.download_button('Download interactive HTML',fig.to_html(include_plotlyjs=True),'forall-plot.html','text/html')
     st.dataframe(result,width='stretch')
-    st.download_button('Download data CSV',result.to_csv(index=True),'forall-data.csv','text/csv')
+    st.download_button('Download data CSV',result.to_csv(index=True,index_label='row_id'),'forall-data.csv','text/csv')
     st.download_button('Download parameters & provenance',json.dumps({'parameters':params,'sources':sources},indent=2),'forall-provenance.json')
 with right:
     st.subheader('OpenLLM assistant')
