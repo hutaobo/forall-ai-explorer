@@ -1,0 +1,7 @@
+*
+!app.py
+!core.py
+!requirements.txt
+!sources.json
+!public-data/
+!public-data/*.xlsx

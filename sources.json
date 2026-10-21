@@ -1,0 +1,105 @@
+{
+  "schema": "seekyoo-forall-sources/1",
+  "paper": {
+    "doi": "10.1038/s41467-022-29224-5",
+    "pmcid": "PMC8967900",
+    "url": "https://www.nature.com/articles/s41467-022-29224-5",
+    "licence": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "application": "https://proteomics.se/forall/",
+  "repository": {
+    "url": "https://github.com/isabelle-leo/FORALL",
+    "commit": "01595b43b1bfab784c4ddc09338ae5450482ece8",
+    "licence": "No explicit repository licence found in the audited tree; no upstream R code is copied or executed."
+  },
+  "datasets": [
+    {
+      "id": "cell_lines",
+      "supplement": "Supplementary Data 1",
+      "filename": "41467_2022_29224_MOESM2_ESM.xlsx",
+      "bytes": 29143,
+      "purpose": "Published cell-line metadata; retain original identifiers and sheet names.",
+      "md5": "60d9587b929d77a4ac9deb1548e9ea5d",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC8967900.1/41467_2022_29224_MOESM2_ESM.xlsx",
+      "layout": {
+        "sheet": "Supp_Data_1",
+        "header_row": 3,
+        "first_data_row": 4,
+        "identifier_column": "A"
+      }
+    },
+    {
+      "id": "proteomics",
+      "supplement": "Supplementary Data 3",
+      "filename": "41467_2022_29224_MOESM4_ESM.xlsx",
+      "bytes": 13384353,
+      "purpose": "Published gene-symbol-centric protein quantification; retain sample columns and reported scale.",
+      "md5": "0e6d2b879f0d05f7d57750081c73333b",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC8967900.1/41467_2022_29224_MOESM4_ESM.xlsx",
+      "layout": {
+        "sheet": "Supp_Data_3",
+        "header_row": 3,
+        "first_data_row": 9,
+        "identifier_column": "A"
+      },
+      "missing_tokens": [
+        "NA"
+      ]
+    },
+    {
+      "id": "drugs",
+      "supplement": "Supplementary Data 6",
+      "filename": "41467_2022_29224_MOESM7_ESM.xlsx",
+      "bytes": 59701,
+      "purpose": "Drug library metadata; preserve compound names and identifiers.",
+      "md5": "a3975e811e76b3ec1b7f8a206aaa7d50",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC8967900.1/41467_2022_29224_MOESM7_ESM.xlsx",
+      "layout": {
+        "sheet": "Supp_Data_6",
+        "header_row": 3,
+        "first_data_row": 4,
+        "identifier_column": "A"
+      }
+    },
+    {
+      "id": "drug_response",
+      "supplement": "Supplementary Data 13",
+      "filename": "41467_2022_29224_MOESM14_ESM.xlsx",
+      "bytes": 148234,
+      "purpose": "Published selective drug sensitivity score (sDSS); no IC50 conversion or clinical extrapolation.",
+      "md5": "0c0735ae8d4d390c57499ec40ecdd8ce",
+      "url": "https://pmc-oa-opendata.s3.amazonaws.com/PMC8967900.1/41467_2022_29224_MOESM14_ESM.xlsx",
+      "layout": {
+        "sheet": "Supp_Data_13",
+        "header_row": 3,
+        "first_data_row": 5,
+        "identifier_column": "A"
+      }
+    }
+  ],
+  "excluded": [
+    {
+      "id": "PXD023662",
+      "reason": "Raw mass-spectrometry data are unnecessary for published-table queries."
+    },
+    {
+      "id": "GSE168386",
+      "reason": "Raw RNA-seq and count matrix are outside this first processed-table import."
+    },
+    {
+      "id": "EGAD00001002704",
+      "reason": "Controlled-access patient data; not fetched."
+    },
+    {
+      "id": "EGAD00001002692",
+      "reason": "Controlled-access patient data; not fetched."
+    },
+    {
+      "id": "EGAS00001001952",
+      "reason": "Protected patient data; not fetched."
+    }
+  ],
+  "expected_metadata_source": "https://www.ebi.ac.uk/europepmc/webservices/rest/PMC8967900/fullTextXML",
+  "verified_delivery_metadata": "https://pmc-oa-opendata.s3.amazonaws.com/PMC8967900.1/PMC8967900.1.json",
+  "delivery_documentation": "https://pmc.ncbi.nlm.nih.gov/tools/pmcaws/"
+}
