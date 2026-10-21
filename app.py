@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy import stats
-from core import load, samples, compare, embedding, chat, UNITS, DOI
+from core import load, samples, compare, embedding, chat, explain_result, UNITS, DOI
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
 st.title('FORALL · AI Explorer')
@@ -52,16 +52,19 @@ with left:
         fig.update_layout(yaxis_title=UNITS[kind],xaxis_title='Published sample / group')
         st.caption(f'{len(clean)} plotted values; {result.missing.sum()} missing values retained in export. No averaging or imputation.')
     elif module=='Pairwise':
-        second=st.selectbox('Second protein / drug',frame.index.tolist(),index=frame.index.get_loc('NR3C1' if kind=='protein' else 'Dexamethasone'))
+        second_kind=st.selectbox('Second data layer',['protein','drug'],index=0 if kind=='protein' else 1)
+        other=frames[second_kind]
+        second=st.selectbox('Second protein / drug',other.index.tolist(),index=other.index.get_loc('NR3C1' if second_kind=='protein' else 'Dexamethasone'))
         method=st.selectbox('Correlation',['Spearman','Pearson'])
-        result=meta.loc[selected].copy();result['x']=frame.loc[term];result['y']=frame.loc[second]
+        result=meta.loc[selected].copy();result['x']=frame.loc[term];result['y']=other.loc[second].reindex(selected)
         clean=result.dropna(subset=['x','y'])
         if len(clean)<3 or clean.x.nunique()<2 or clean.y.nunique()<2:st.warning('At least three paired nonconstant measurements required.');st.stop()
         stat=(stats.spearmanr if method=='Spearman' else stats.pearsonr)(clean.x,clean.y)
         st.metric(f'{method} r',f'{stat.statistic:.3f}');st.caption(f'n={len(clean)} paired sample columns; nominal p={stat.pvalue:.4g}. Exploratory, not causality; replicate inclusion affects independence.')
         fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate',hover_data=['sample','excel_column'])
-        fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[kind]}')
-        params.update(second=second,method=method)
+        fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[second_kind]}')
+        st.caption(f'Cross-layer pairing uses exact published sample names only; {len(result)-len(clean)} unmatched/missing pairs excluded. Aliases are not silently merged.')
+        params.update(second=second,second_layer=second_kind,method=method)
     elif module=='Group comparison':
         if len(groups)<2:st.warning('Select two groups in the sidebar.');st.stop()
         a=st.selectbox('Group A',groups);b=st.selectbox('Group B',groups,index=1)
@@ -73,6 +76,7 @@ with left:
         fig=px.scatter(result,x='mean_difference',y=-np.log10(result.q_BH.clip(lower=1e-300)),hover_name='feature')
         fig.update_layout(xaxis_title=f'Mean {a} − {b} · {UNITS[kind]}',yaxis_title='−log10(BH q)')
         st.caption('Exploratory across cell lines; replicates excluded. BH adjustment over all tested features. This is not DEqMS/edgeR reproduction.')
+        st.caption(f'{result.p.isna().sum()} untestable/constant features have undefined p/q values, not evidence of significance.')
         params.update(group_a=a,group_b=b,test=test)
     elif module=='PCA / UMAP':
         method=st.selectbox('Embedding',['PCA','UMAP'])
@@ -123,7 +127,7 @@ with right:
     if st.button('AI: explain current result'):
         try:
             summary={'parameters':params,'rows':len(result),'preview':json.loads(result.head(12).to_json(orient='records')),'source':sources[kind], 'scope':'Preview only, not all rows. No clinical advice or causal conclusions.'}
-            answer=chat([{'role':'system','content':'Explain the supplied computed public FORALL result in the user language. Use only supplied numerical facts; explicitly distinguish observation, hypothesis and limitations. The preview is partial. Cite supplied DOI. Never invent a test, value or statistical significance.'}, {'role':'user','content':prompt+'\n'+json.dumps(summary,ensure_ascii=False)}],api_key=session_key)
+            answer=explain_result(summary,prompt,api_key=session_key)
             st.write(answer)
         except Exception:st.error('OpenLLM unavailable; your computed result remains available.')
     with st.expander('Data provenance'):st.json(sources)

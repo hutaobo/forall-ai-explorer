@@ -11,6 +11,23 @@ FILES = {'protein': '41467_2022_29224_MOESM4_ESM.xlsx', 'drug': '41467_2022_2922
          'cells': '41467_2022_29224_MOESM2_ESM.xlsx', 'drugs': '41467_2022_29224_MOESM7_ESM.xlsx'}
 UNITS = {'protein': 'log2 relative protein abundance', 'drug': 'sDSS'}
 DOI = 'https://doi.org/10.1038/s41467-022-29224-5'
+GLOSSARY = '''FORALL data dictionary: SEM and REH are named leukemia CELL LINES, never error measures.
+sDSS means SELECTIVE drug sensitivity score, normalized to normal bone marrow response using a modified AUC metric.
+Do not call sDSS scaled/standardized DSS, invent a universal numerical range, interpret negative values as stimulated growth,
+equate near-zero with statistical nonsignificance, or convert sDSS to IC50. Protein values are log2 abundance relative to
+a pooled control, not RNA expression. A table of cell lines supplies no error bars, uncertainty or significance unless
+explicitly computed and supplied. A higher sDSS is a higher published score; it does not establish clinical efficacy.'''
+
+def explain_result(summary, question, api_key=None):
+    text=chat([{'role':'system','content':GLOSSARY+' Explain the supplied computed public FORALL result in the user language. '
+        'Use only supplied numerical facts. Distinguish observation, hypothesis and limitations. Preview is partial. '
+        'Cite supplied DOI. Never invent tests, values or statistical significance.'},
+        {'role':'user','content':question+'\n'+json.dumps(summary,ensure_ascii=False)}],api_key=api_key)
+    # Fail visibly on known identifier/metric confusions; never silently show them as scientific conclusions.
+    lower=text.casefold()
+    if any(term in lower for term in ('scaled drug sensitivity','standard error of the mean','均值的标准误','缩放后的药物敏感性')):
+        raise ValueError('Model confused the data dictionary; explanation withheld, computed values unchanged.')
+    return text
 
 def load(root):
     root = Path(root)
