@@ -14,6 +14,25 @@ Protein units are log2 relative protein abundance; drug response is sDSS.
 Nominal correlation tests with replicate columns are exploratory and do not
 establish independent biological replication or causal effects.
 
+## Seekyoo member deployment
+
+The container requires a signed Seekyoo member launch session before showing the
+application. Open it from the FORALL card in Seekyoo. Launch links expire for
+redemption after five minutes, are single-use, and establish a session of at most
+one hour. AI calls revalidate membership, the live FORALL revision and existing
+FORALL quotas through the platform; questions and API keys are not sent to that
+quota endpoint. The platform public verification key is fetched from a fixed
+HTTPS endpoint. Anonymous visitors cannot reach charts or shared-key AI calls.
+
+Attach private persistent project storage at `/home/data`. The verified owner
+may configure the shared OpenLLM key through the administrator expander, which
+saves an owner-only file in `/home/data/forall-private`. Ordinary members have
+no key input and never receive the key. Do not put the key into this repository,
+container build arguments, Docker image or a public app download. Expired OpenLLM
+keys must be replaced by the administrator. Local development retains optional
+session-key entry when `FORALL_SEEKYOO_AUTH` is unset; the published container
+sets it to `1` and fails closed when platform authorization is unavailable.
+
 ## Run
 
 Install requirements in an isolated environment. Set FORALL_DATA_ROOT to the

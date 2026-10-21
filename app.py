@@ -7,8 +7,10 @@ import plotly.express as px
 import streamlit as st
 from scipy import stats
 from core import load, samples, compare, embedding, chat, explain_result, validate_controls, GLOSSARY, UNITS, DOI
+from seekyoo_access import gate, hosted_request
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
+identity=gate(st)
 st.title('FORALL · AI Explorer')
 st.caption('Interactive published-data research · SciLifeLab OpenLLM · Independent implementation, not endorsed by the original authors')
 @st.cache_data(show_spinner='Loading verified published workbooks…')
@@ -108,14 +110,15 @@ with left:
     st.download_button('Download parameters & provenance',json.dumps({'parameters':params,'sources':sources},indent=2),'forall-provenance.json')
 with right:
     st.subheader('OpenLLM assistant')
-    session_key=st.text_input('OpenLLM API key (optional if configured by host)',type='password',help='Used only in this browser session; not saved to disk.')
+    session_key=None if identity else st.text_input('OpenLLM API key (optional if configured by host)',type='password',help='Used only in this browser session; not saved to disk.')
     st.caption('Your question and the displayed public-data summary are sent to SciLifeLab OpenLLM only when you click a button. Keys stay server-side.')
     prompt=st.text_area('Ask / 操作或解释',placeholder='绘制 BCL2 蛋白表达图，选择 T-ALL；或解释当前图中的趋势。')
     if st.button('AI: suggest controls'):
         try:
             group_options={k:metadata[k].group.unique().tolist() for k in metadata}
             instruction=GLOSSARY+' Translate the user request into WEB INTERFACE SETTINGS only, not laboratory controls. Return exactly kind (protein/drug), module (Profile/Pairwise/Group comparison/PCA / UMAP/Data tables), feature, groups (array). No explanation, extra fields, experimental design, drug mechanisms, IC50 or results. For all groups use every group AVAILABLE IN THE REQUESTED LAYER. Available groups per layer: '+json.dumps(group_options)
-            suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
+            with hosted_request(identity,prompt):
+                suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
             st.session_state['suggestion']=validate_controls(suggestion,frames,metadata)
         except Exception:st.error('OpenLLM did not return valid controls. No analysis changed.')
     if 'suggestion' in st.session_state:
@@ -132,7 +135,8 @@ with right:
     if st.button('AI: explain current result'):
         try:
             summary={'parameters':params,'rows':len(result),'preview':json.loads(result.head(12).to_json(orient='records')),'source':sources[kind], 'scope':'Preview only, not all rows. No clinical advice or causal conclusions.'}
-            answer=explain_result(summary,prompt,api_key=session_key)
+            with hosted_request(identity,prompt):
+                answer=explain_result(summary,prompt,api_key=session_key)
             st.write(answer)
         except Exception:st.error('OpenLLM unavailable; your computed result remains available.')
     with st.expander('Data provenance'):st.json(sources)
