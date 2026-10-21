@@ -24,7 +24,9 @@ with st.sidebar:
     kind = st.selectbox('Data layer',['protein','drug'],key='kind')
     module = st.selectbox('Analysis',['Profile','Pairwise','Group comparison','PCA / UMAP','Data tables'],key='module')
     group_names = list(dict.fromkeys(metadata[kind].group))
-    groups = st.multiselect('Cell-line groups',group_names,default=group_names,key='groups')
+    if 'groups' not in st.session_state: st.session_state['groups']=group_names
+    else: st.session_state['groups']=[g for g in st.session_state['groups'] if g in group_names]
+    groups = st.multiselect('Cell-line groups',group_names,key='groups')
     reps = st.checkbox('Include published replicate columns',value=False,key='reps')
     st.caption('Replicates retain their original columns. Group tests use only primary columns.')
     st.markdown(f'[Original paper]({DOI}) · [Original FORALL](https://proteomics.se/forall/)')
@@ -38,7 +40,8 @@ left, right=st.columns([3,1])
 with left:
     st.subheader(module)
     if module in ['Profile','Pairwise']:
-        term = st.selectbox('Protein / drug',frame.index.tolist(),index=frame.index.get_loc('BCL2' if kind=='protein' else 'Venetoclax'),key='feature')
+        if st.session_state.get('feature') not in frame.index: st.session_state['feature']='BCL2' if kind=='protein' else 'Venetoclax'
+        term = st.selectbox('Protein / drug',frame.index.tolist(),key='feature')
         params['feature']=term
     if module=='Profile':
         chart=st.selectbox('Chart',['Points','Bars','Boxplot'])
