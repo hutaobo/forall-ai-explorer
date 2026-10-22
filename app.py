@@ -22,6 +22,7 @@ try: frames, metadata, sources = dataset(root)
 except Exception as e: st.error(str(e)); st.stop()
 if 'pending_controls' in st.session_state:
     for key,value in st.session_state.pop('pending_controls').items(): st.session_state[key]=value
+run_requested=st.session_state.pop('run_requested',False)
 
 with st.sidebar:
     st.header('Analysis controls')
@@ -111,7 +112,7 @@ with left:
         target_kind=st.selectbox('Scan against data layer',['protein','drug'],index=1)
         method=st.selectbox('Scan correlation',['Spearman','Pearson'])
         signature=(kind,term,tuple(selected),target_kind,method)
-        if st.button('Compute correlation scan'):
+        if st.button('Compute correlation scan') or run_requested:
             with st.spinner('Computing pairwise-complete correlations across the full target layer…'):
                 st.session_state['scan_result']=(signature,correlation_scan(frames,metadata,kind,term,selected,target_kind,method))
         stored=st.session_state.get('scan_result');result=stored[1] if stored and stored[0]==signature else pd.DataFrame()
@@ -150,7 +151,7 @@ with left:
         neighbors=st.slider('Neighbors',2,50,15);distance=st.slider('Minimum distance',0.0,0.99,0.1);seed=st.number_input('Random seed',0,999999,42)
         signature=(kind,tuple(selected),method,features,neighbors,distance,seed)
         if st.session_state.get('embedding_signature') != signature: st.session_state.pop('embedding_result',None)
-        if st.button('Compute embedding'):
+        if st.button('Compute embedding') or run_requested:
             with st.spinner('Computing…'):
                 result,details=embedding(frame,method,int(features),neighbors,distance,int(seed));params.update(details)
                 result=result.join(meta[['group','replicate']]);result['sample']=result.index
@@ -176,13 +177,20 @@ with right:
     prompt=st.text_area('Ask AI',placeholder='Plot BCL2 protein abundance for T-ALL, or explain the current analysis.',key='ask_ai_prompt')
     st.caption('Press Tab to complete the example prompt. Shift+Tab moves to the previous control.')
     components.html('<script>'+Path(__file__).with_name('prompt_completion.js').read_text(encoding='utf-8')+'</script>',height=0)
-    if st.button('AI: suggest controls'):
+    if st.button('Run AI',type='primary',use_container_width=True,help='Read your prompt, apply validated analysis settings, and run the analysis.'):
         try:
+            if not prompt.strip():
+                st.warning('Enter a prompt, or press Tab in the input to use the example.');st.stop()
             group_options={k:metadata[k].group.unique().tolist() for k in metadata}
             instruction=GLOSSARY+' Translate into web settings only. Return JSON kind (protein/drug), module from '+json.dumps(MODULES)+', feature, groups(array). For Pairwise also second_kind, second_feature, method(Spearman/Pearson). For Cell-line profile optionally cell_line. No explanation or invented results. For all groups use all available groups in requested layer. Available groups: '+json.dumps(group_options)
-            with hosted_request(identity,prompt):
-                suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
-            st.session_state['suggestion']=validate_controls(suggestion,frames,metadata)
+            with st.spinner('Reading your prompt and preparing the analysis…'):
+                with hosted_request(identity,prompt):
+                    suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
+                plan=validate_controls(suggestion,frames,metadata)
+            st.session_state['suggestion']=plan
+            st.session_state['pending_controls']=plan
+            st.session_state['run_requested']=True
+            st.rerun()
         except Exception:st.error('OpenLLM did not return valid controls. No analysis changed.')
     if 'suggestion' in st.session_state:
         plan=st.session_state['suggestion'];st.json(plan)
@@ -195,7 +203,7 @@ with right:
             if newfeature and newfeature not in frames[newkind].index:st.error('Feature not found in original table.');st.stop()
             st.session_state['pending_controls']={**plan,'kind':newkind,'module':newmodule,'groups':validgroups}
             st.rerun()
-    if st.button('AI: explain current result'):
+    if st.button('Explain result',use_container_width=True,help='Explain the currently displayed computed result using your question.'):
         try:
             summary=result_context(result,params,sources,computed_statistics)
             with hosted_request(identity,prompt):
