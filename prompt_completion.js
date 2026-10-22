@@ -1,9 +1,8 @@
 // Delegated listener survives Streamlit rerenders without accumulating handlers.
 (() => {
   const doc = window.parent.document;
-  if (doc.forallPromptCompletion) return;
-  doc.forallPromptCompletion = true;
-  doc.addEventListener('keydown', (event) => {
+  if (doc.forallPromptCompletion) doc.removeEventListener('keydown', doc.forallPromptCompletion, true);
+  const complete = (event) => {
     const field = event.target;
     if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.altKey ||
         event.metaKey || event.isComposing || field.tagName !== 'TEXTAREA' ||
@@ -20,5 +19,7 @@
     field.dispatchEvent(new view.Event('input', {bubbles: true}));
     field.dispatchEvent(new view.Event('change', {bubbles: true}));
     field.setSelectionRange(example.length, example.length);
-  }, true);
+  };
+  doc.forallPromptCompletion = complete;
+  doc.addEventListener('keydown', complete, true);
 })();
