@@ -191,7 +191,13 @@ with right:
             st.session_state['pending_controls']=plan
             st.session_state['run_requested']=True
             st.rerun()
-        except Exception:st.error('OpenLLM did not return valid controls. No analysis changed.')
+        except Exception as error:
+            safe_errors={'Seekyoo authorization unavailable or usage limit reached. Return to Seekyoo to retry.',
+                         'Permission changed','Permission changed; answer discarded',
+                         'OpenLLM credential not configured on the server.',
+                         'Unknown layer','Unknown module','Unknown feature','Unknown groups','Unknown second feature'}
+            if isinstance(error,ValueError) and str(error) in safe_errors:st.error(str(error))
+            else:st.error(f'OpenLLM could not prepare the analysis ({type(error).__name__}). No analysis changed. Please retry.')
     if 'suggestion' in st.session_state:
         plan=st.session_state['suggestion'];st.json(plan)
         if st.button('Apply suggested controls'):
