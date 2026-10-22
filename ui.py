@@ -24,7 +24,7 @@ def theme(st):
     .sy-feature { border-top:1px solid var(--line); padding:1.2rem 0; }
     .sy-feature b { color:var(--ink); }
     .sy-feature p { color:#627361; margin:.4rem 0; }
-    [data-testid="stBaseButton-primary"],button[kind="primary"] { background:var(--teal)!important; border-color:var(--teal)!important; border-radius:10px; min-height:44px; }
+    [data-testid="stBaseButton-primary"],[data-testid="stBaseLinkButton-primary"],button[kind="primary"] { background:var(--teal)!important; border-color:var(--teal)!important; color:white!important; border-radius:10px; min-height:44px; }
     [data-testid="stBaseButton-secondary"], [data-testid="stLinkButton"] a { border-color:#ccd8c9; border-radius:10px; }
     [data-testid="stTextArea"] textarea { background:#fffef9!important; border-radius:12px; }
     [data-testid="stExpander"] { background:#fffef9; border-radius:12px; }
