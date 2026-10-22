@@ -97,6 +97,9 @@ def gate(st):
             if public.get('protocol')!=PROTOCOL: raise ValueError('Unknown issuer')
             claims=redeem_session(token,public['public_key'])
             st.session_state['seekyoo_session']={'token':token,'claims':claims}
+        except AccessError as error:
+            sign_in(st,unavailable=True)
+            st.error(str(error));st.stop()
         except Exception:
             sign_in(st,expired=True)
             st.stop()
@@ -107,7 +110,7 @@ def gate(st):
     try:
         identity['account']=request_json('calls',{'action':'authorize','token':identity['token']})
     except AccessError as error:
-        sign_in(st)
+        sign_in(st,unavailable=True)
         st.error(str(error));st.stop()
     os.environ['OPENLLM_KEY_FILE']=str(private_root()/'openllm-key')
     if (private_root()/'openllm-key').is_file(): os.chmod(private_root()/'openllm-key',0o600)

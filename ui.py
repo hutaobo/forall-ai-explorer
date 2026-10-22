@@ -36,7 +36,7 @@ def theme(st):
 def brand(st):
     st.markdown('<div class="sy-brand"><span class="sy-mark">s</span> seekyoo <span style="color:#98a78e;font-weight:400">/</span> research tools</div>',unsafe_allow_html=True)
 
-def sign_in(st, expired=False):
+def sign_in(st, expired=False, unavailable=False):
     brand(st)
     st.markdown('''<section class="sy-hero"><div class="sy-tag">FORALL · AI Explorer</div>
     <h1>From a question<br>to an interactive discovery.</h1>
@@ -46,7 +46,8 @@ def sign_in(st, expired=False):
     with left:
         st.subheader('Your research workspace starts here')
         st.write('Sign in with your Seekyoo account, then open FORALL. The shared SciLifeLab OpenLLM connection is provided for you.')
-        st.info('Session expired. Sign in again to continue.' if expired else 'You are not signed in to this FORALL workspace.')
+        status='Account verification is temporarily unavailable. Refresh your session or retry shortly.' if unavailable else ('Session expired. Sign in again to continue.' if expired else 'You are not signed in to this FORALL workspace.')
+        st.info(status)
         st.link_button('1 · Sign in to Seekyoo','https://app.seekyoo.com/?lang=en',type='primary',use_container_width=True)
         st.link_button('2 · Open FORALL with my account','https://app.seekyoo.com/api/play/tools/forall/launch',use_container_width=True)
         st.caption('Already signed in to Seekyoo? Use step 2. New members can register and verify their email in step 1. No OpenLLM key needed.')

@@ -16,6 +16,7 @@ jobs:
         run: |
           pip install cryptography==46.0.3
           python test_access.py
+          python test_trial_access.py
       - name: Fetch and verify public workbooks
         run: |
           python - <<'PY'
@@ -35,6 +36,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/hutaobo/forall-ai-explorer:20261022-v17
+          tags: ghcr.io/hutaobo/forall-ai-explorer:20261022-v18
           cache-from: type=gha
           cache-to: type=gha,mode=max
