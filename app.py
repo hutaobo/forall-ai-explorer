@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy import stats
-from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, validate_controls, GLOSSARY, UNITS, DOI
+from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, correlation_scan, MODULES, validate_controls, GLOSSARY, UNITS, DOI
 from seekyoo_access import gate, hosted_request
 from adjusted import group_adjusted
 
@@ -25,7 +25,7 @@ if 'pending_controls' in st.session_state:
 with st.sidebar:
     st.header('Analysis controls')
     kind = st.selectbox('Data layer',['protein','drug'],key='kind')
-    module = st.selectbox('Analysis',['Profile','Pairwise','Group comparison','PCA / UMAP','Data tables'],key='module')
+    module = st.selectbox('Analysis',MODULES,key='module')
     group_names = list(dict.fromkeys(metadata[kind].group))
     if 'groups' not in st.session_state: st.session_state['groups']=group_names
     else: st.session_state['groups']=[g for g in st.session_state['groups'] if g in group_names]
@@ -42,7 +42,7 @@ result = None; computed_statistics={}; params={'layer':kind,'module':module,'gro
 left, right=st.columns([3,1])
 with left:
     st.subheader(module)
-    if module in ['Profile','Pairwise']:
+    if module in ['Profile','Pairwise','Correlation scan']:
         if st.session_state.get('feature') not in frame.index: st.session_state['feature']='BCL2' if kind=='protein' else 'Venetoclax'
         term = st.selectbox('Protein / drug',frame.index.tolist(),key='feature')
         params['feature']=term
@@ -58,10 +58,12 @@ with left:
         fig.update_layout(yaxis_title=UNITS[kind],xaxis_title='Published sample / group')
         st.caption(f'{len(clean)} plotted values; {result.missing.sum()} missing values retained in export. No averaging or imputation.')
     elif module=='Pairwise':
-        second_kind=st.selectbox('Second data layer',['protein','drug'],index=0 if kind=='protein' else 1)
+        if 'second_kind' not in st.session_state:st.session_state['second_kind']=kind
+        second_kind=st.selectbox('Second data layer',['protein','drug'],key='second_kind')
         other=frames[second_kind]
-        second=st.selectbox('Second protein / drug',other.index.tolist(),index=other.index.get_loc('NR3C1' if second_kind=='protein' else 'Dexamethasone'))
-        method=st.selectbox('Correlation',['Spearman','Pearson'])
+        if st.session_state.get('second_feature') not in other.index:st.session_state['second_feature']='NR3C1' if second_kind=='protein' else 'Dexamethasone'
+        second=st.selectbox('Second protein / drug',other.index.tolist(),key='second_feature')
+        method=st.selectbox('Correlation',['Spearman','Pearson'],key='correlation_method')
         harmonize=st.checkbox('Use audited FORALL label harmonization',value=True)
         result=pairwise_table(frames,metadata,kind,term,selected,second_kind,second,harmonize)
         clean=result.dropna(subset=['x','y'])
@@ -104,6 +106,30 @@ with left:
         except ValueError as error:
             st.info(str(error))
         params.update(second=second,second_layer=second_kind,method=method,label_harmonization=harmonize,statistics=computed_statistics)
+    elif module=='Correlation scan':
+        target_kind=st.selectbox('Scan against data layer',['protein','drug'],index=1)
+        method=st.selectbox('Scan correlation',['Spearman','Pearson'])
+        signature=(kind,term,tuple(selected),target_kind,method)
+        if st.button('Compute correlation scan'):
+            with st.spinner('Computing pairwise-complete correlations across the full target layer…'):
+                st.session_state['scan_result']=(signature,correlation_scan(frames,metadata,kind,term,selected,target_kind,method))
+        stored=st.session_state.get('scan_result');result=stored[1] if stored and stored[0]==signature else pd.DataFrame()
+        fig=None
+        if result.empty:st.info('Choose the feature and target layer, then compute the scan.')
+        else:
+            plot=result.dropna(subset=['coefficient']).copy();plot['rank']=np.arange(1,len(plot)+1)
+            fig=px.scatter(plot,x='rank',y='coefficient',hover_name='feature',hover_data=['n','nominal_p','q_BH'],render_mode='webgl')
+            fig.update_layout(xaxis_title='Correlation rank (descending)',yaxis_title=f'{method} correlation')
+            st.caption(f'{len(result)} target features; {len(plot)} testable. Pairwise-complete data; BH across all testable target features. Spearman p uses the asymptotic t approximation. Audited FORALL labels enabled; replicates follow the sidebar selection.')
+        params.update(second_layer=target_kind,method=method)
+    elif module=='Cell-line profile':
+        if st.session_state.get('cell_line') not in selected:st.session_state['cell_line']='REH' if 'REH' in selected else selected[0]
+        cell=st.selectbox('Cell line',selected,key='cell_line')
+        result=pd.DataFrame({'feature':frame.index,'value':frame[cell].to_numpy()}).sort_values('value',ascending=False,na_position='last')
+        fig=px.scatter(result.dropna(),x='feature',y='value',hover_name='feature')
+        fig.update_layout(xaxis_title='Protein / drug (ranked by value)',yaxis_title=UNITS[kind],xaxis_showticklabels=False)
+        st.caption(f'{cell}: all {len(result)} features retained in the table/export. No averaging or imputation.')
+        params.update(cell_line=cell)
     elif module=='Group comparison':
         if len(groups)<2:st.warning('Select two groups in the sidebar.');st.stop()
         a=st.selectbox('Group A',groups);b=st.selectbox('Group B',groups,index=1)
@@ -150,7 +176,7 @@ with right:
     if st.button('AI: suggest controls'):
         try:
             group_options={k:metadata[k].group.unique().tolist() for k in metadata}
-            instruction=GLOSSARY+' Translate the user request into WEB INTERFACE SETTINGS only, not laboratory controls. Return exactly kind (protein/drug), module (Profile/Pairwise/Group comparison/PCA / UMAP/Data tables), feature, groups (array). No explanation, extra fields, experimental design, drug mechanisms, IC50 or results. For all groups use every group AVAILABLE IN THE REQUESTED LAYER. Available groups per layer: '+json.dumps(group_options)
+            instruction=GLOSSARY+' Translate into web settings only. Return JSON kind (protein/drug), module from '+json.dumps(MODULES)+', feature, groups(array). For Pairwise also second_kind, second_feature, method(Spearman/Pearson). For Cell-line profile optionally cell_line. No explanation or invented results. For all groups use all available groups in requested layer. Available groups: '+json.dumps(group_options)
             with hosted_request(identity,prompt):
                 suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
             st.session_state['suggestion']=validate_controls(suggestion,frames,metadata)
@@ -160,11 +186,11 @@ with right:
         if st.button('Apply suggested controls'):
             newkind=plan.get('kind',kind);newmodule=plan.get('module',module);newfeature=plan.get('feature')
             if newkind not in frames or newkind not in metadata:st.error('Unknown layer.');st.stop()
-            if newmodule not in ['Profile','Pairwise','Group comparison','PCA / UMAP','Data tables']:st.error('Unknown module.');st.stop()
+            if newmodule not in MODULES:st.error('Unknown module.');st.stop()
             validgroups=plan.get('groups') or metadata[newkind].group.unique().tolist()
             if any(g not in metadata[newkind].group.values for g in validgroups):st.error('Unknown groups.');st.stop()
             if newfeature and newfeature not in frames[newkind].index:st.error('Feature not found in original table.');st.stop()
-            st.session_state['pending_controls']={'kind':newkind,'module':newmodule,'groups':validgroups,**({'feature':newfeature} if newfeature else {})}
+            st.session_state['pending_controls']={**plan,'kind':newkind,'module':newmodule,'groups':validgroups}
             st.rerun()
     if st.button('AI: explain current result'):
         try:
@@ -174,3 +200,6 @@ with right:
             st.write(answer)
         except Exception:st.error('OpenLLM unavailable; your computed result remains available.')
     with st.expander('Data provenance'):st.json(sources)
+    with st.expander('Trial scope and original FORALL coverage'):
+        st.write('Independent AI-assisted protein/drug explorer; not a full replacement of original FORALL. Includes profiles, pairwise/group-adjusted correlations, full-layer correlation scans/ranks, cell-line profiles, exploratory group tests, sample-wise PCA/UMAP, metadata and exports.')
+        st.write('Not yet included: RNA profiles/correlations, edgeR, DEqMS, fusion genes, GSEA/functional enrichment, correlation networks, subtype/consensus-cluster/custom sample grouping, drug-wise UMAP, or full original-method equivalence. AI suggests validated controls and explains computed results; some steps still require manual selection or Compute buttons.')

@@ -15,6 +15,22 @@ DOI = 'https://doi.org/10.1038/s41467-022-29224-5'
 # Not a general rule: h/non-h COG derivatives may be distinct cell lines elsewhere.
 FORALL_PROTEIN_LABELS = {'COG-LL-319':'COG-LL-319h','COG-LL-332':'COG-LL-332h',
                        'COG-LL-394':'COG-LL-394h','COG-LL-402':'COG-LL-402h','TMD-5':'TMD5'}
+MODULES=['Profile','Pairwise','Correlation scan','Cell-line profile','Group comparison','PCA / UMAP','Data tables']
+
+def correlation_scan(frames,metadata,kind,feature,selected,second_kind,method='Spearman',harmonize=True):
+    template=pairwise_table(frames,metadata,kind,feature,selected,second_kind,frames[second_kind].index[0],harmonize)
+    y=frames[second_kind].reindex(columns=template.second_sample.tolist()).to_numpy(float)
+    x=np.broadcast_to(frames[kind].loc[feature,selected].to_numpy(float),y.shape).copy()
+    valid=np.isfinite(x)&np.isfinite(y); n=valid.sum(axis=1)
+    x[~valid]=np.nan; y[~valid]=np.nan
+    if method=='Spearman': x=stats.rankdata(x,axis=1,nan_policy='omit'); y=stats.rankdata(y,axis=1,nan_policy='omit')
+    x-=np.divide(np.nansum(x,axis=1),n,out=np.zeros(len(n)),where=n>0)[:,None]
+    y-=np.divide(np.nansum(y,axis=1),n,out=np.zeros(len(n)),where=n>0)[:,None]
+    den=np.sqrt(np.nansum(x*x,axis=1)*np.nansum(y*y,axis=1))
+    r=np.divide(np.nansum(x*y,axis=1),den,out=np.full(len(n),np.nan),where=(den>0)&(n>=3))
+    r=np.clip(r,-1,1); p=2*stats.t.sf(np.abs(r)*np.sqrt(np.maximum(n-2,0)/np.maximum(1-r*r,1e-15)),np.maximum(n-2,1))
+    out=pd.DataFrame({'feature':frames[second_kind].index,'n':n,'coefficient':r,'nominal_p':p,'q_BH':bh(p)})
+    return out.sort_values('coefficient',ascending=False,na_position='last').reset_index(drop=True)
 
 def pairwise_table(frames, metadata, kind, feature, selected, second_kind, second, harmonize=True):
     def canonical(name, layer):
@@ -49,7 +65,7 @@ explicitly computed and supplied. A higher sDSS is a higher published score; it 
 
 def result_context(result, parameters, sources, statistics=None):
     """Full selected observations for profiles/pairs; full aggregates for large tables."""
-    full = parameters.get('module') in ('Profile', 'Pairwise')
+    full = parameters.get('module') in ('Profile', 'Pairwise', 'Cell-line profile')
     context = {'parameters': parameters, 'rows': len(result), 'sources': sources,
                'statistics': statistics or {}, 'doi': DOI}
     if full:
@@ -171,13 +187,21 @@ def validate_controls(raw, frames, metadata):
     plan = json.loads(raw) if isinstance(raw, str) else raw
     kind, module = plan.get('kind'), plan.get('module')
     if kind not in frames or kind not in metadata: raise ValueError('Unknown layer')
-    if module not in ['Profile','Pairwise','Group comparison','PCA / UMAP','Data tables']: raise ValueError('Unknown module')
+    if module not in MODULES: raise ValueError('Unknown module')
     feature = plan.get('feature')
     if feature is not None and feature not in frames[kind].index: raise ValueError('Unknown feature')
     available = metadata[kind].group.unique().tolist()
     groups = plan.get('groups') or available
     if not isinstance(groups,list) or any(not isinstance(g,str) or g not in available for g in groups): raise ValueError('Unknown groups')
-    return {'kind':kind,'module':module,'groups':list(dict.fromkeys(groups)),**({'feature':feature} if feature else {})}
+    result={'kind':kind,'module':module,'groups':list(dict.fromkeys(groups)),**({'feature':feature} if feature else {})}
+    if module=='Pairwise':
+        sk=plan.get('second_kind',kind); sf=plan.get('second_feature')
+        if sk not in metadata or (sf is not None and sf not in frames[sk].index): raise ValueError('Unknown second feature')
+        result['second_kind']=sk
+        if sf:result['second_feature']=sf
+        if plan.get('method') in ('Spearman','Pearson'):result['correlation_method']=plan['method']
+    if module=='Cell-line profile' and plan.get('cell_line') in metadata[kind].index:result['cell_line']=plan['cell_line']
+    return result
 
 def chat(messages, json_mode=False, api_key=None):
     import urllib.request, urllib.error
