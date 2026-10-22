@@ -3,11 +3,11 @@
 Entry: https://app.seekyoo.com/api/play/tools/forall/launch (register, verify email and sign in).
 Hosted app: https://forall-ai-explorer.serve.scilifelab.se/ (requires a fresh Seekyoo launch).
 
-Independent prototype using published CC BY 4.0 tables and SciLifeLab OpenLLM. It is not the original FORALL, an author-endorsed service, or a validated replacement. API credentials remain server-side. AI suggests validated controls and explains computed data; it does not invent statistics. Some steps still require Apply or Compute buttons. Users' requests and public-data context go to SciLifeLab OpenLLM when an AI button is clicked.
+Independent prototype using published CC BY 4.0 tables and SciLifeLab OpenLLM. It is not the original FORALL, an author-endorsed service, or a validated replacement. API credentials remain server-side. Run AI applies validated controls and runs the analysis; Explain result interprets computed data. Manual workflows retain their Compute buttons. Users' requests and public-data context go to SciLifeLab OpenLLM when an AI button is clicked. The English workspace displays the signed-in account; the explorer has no app call-count cap during the trial.
 
 ## Suggested trial
 
-1. In Ask AI, request: “Show the Spearman correlation between BCL2 protein abundance and Venetoclax drug sensitivity across all available groups.” Click AI: suggest controls, then Apply suggested controls.
+1. In Ask AI, request: “Show the Spearman correlation between BCL2 protein abundance and Venetoclax drug sensitivity across all available groups.” Click Run AI. Tab completes the example prompt when the input is empty or contains its opening words.
 2. Inspect 43 audited pairs, within-group results and Group-adjusted association. Hover to see original cross-table labels. Compare global-rank residuals with group-demeaned values; download CSV, HTML and statistics.
 3. Select Correlation scan with BCL2 against drug, then Compute correlation scan. Inspect all 528 drug correlations, pair counts, nominal p and BH q.
 4. Select drug / Cell-line profile / REH to inspect all 528 drug scores for one cell line.

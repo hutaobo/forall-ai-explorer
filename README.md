@@ -19,13 +19,15 @@ establish independent biological replication or causal effects.
 The container requires a signed Seekyoo member launch session before showing the
 application. Open it from the FORALL card in Seekyoo. Launch links expire for
 redemption after five minutes, are single-use, and establish a session of at most
-one hour. AI calls revalidate membership, the live FORALL revision and existing
-FORALL quotas through the platform; questions and API keys are not sent to that
-quota endpoint. The platform public verification key is fetched from a fixed
+one hour. During the member trial, the explorer has no per-member, daily or total
+call-count cap. AI calls revalidate membership, account blocking and the live
+FORALL revision before and after inference through a dedicated read-only
+authorization endpoint; questions and API keys are not sent to that endpoint.
+The sidebar shows the verified account and session expiry. The platform public verification key is fetched from a fixed
 HTTPS endpoint. Anonymous visitors cannot reach charts or shared-key AI calls.
-The verified creator has a separate administrator self-test path: their own AI
-requests use their connection directly, because existing marketplace rules
-exclude creator self-calls. Those marketplace rules and member quotas stay intact.
+Both owner and member requests use these live checks. The original marketplace
+agent's separate quota, ledger and self-call policy are unchanged. This explorer
+trial does not alter the provider's own service capacity or model context window.
 
 Attach private persistent project storage at `/home/data`. The verified owner
 may configure the shared OpenLLM key through the administrator expander, which
@@ -66,3 +68,5 @@ not assumed equivalent. RNA data are not bundled in this release.
 Data license: CC BY 4.0, see sources.json. Software: MIT (LICENSE).
 
 AI context update (2026-10-22): Profile and Pairwise send all selected records, including missing values, plus computed correlation statistics and provenance. Other large-table modules send full-table numeric aggregates with an explicit scope; no hidden first12-row preview. The model explains computed results; it does not calculate the correlation.
+
+2026-10-22 v9: Pairwise includes an explicit five-entry, FORALL-only label harmonization toggle; original names remain in CSV/hover. Within-group correlations include n, coefficient, nominal p and BH q across eligible groups. No general h-suffix normalization; culture derivatives can be distinct. Audit: shared plans/forall-integration-20261021/reports/alias-audit-20261022.md.
