@@ -3,6 +3,19 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+def group_adjusted_cohorts(clean):
+    """Keep the full cohort and label the restricted two-lineage sensitivity."""
+    primary=clean.loc[~clean.replicate].copy() if 'replicate' in clean else clean.copy()
+    summary,residuals=group_adjusted(primary)
+    cohorts={'all':{'statistics':summary,'residuals':residuals}}
+    restricted=primary.loc[primary.group.isin(['BCP-ALL','T-ALL'])]
+    if set(restricted.group)=={'BCP-ALL','T-ALL'} and len(restricted)<len(primary):
+        summary,residuals=group_adjusted(restricted)
+        summary['cohort_selection']='BCP-ALL and T-ALL only; other groups excluded, not reassigned'
+        summary['excluded_from_full_n']=len(primary)-len(restricted)
+        cohorts['bcp_t']={'statistics':summary,'residuals':residuals}
+    return cohorts
+
 def group_adjusted(clean, permutations=9999, bootstraps=2000, seed=20261022):
     data=clean.dropna(subset=['x','y','group']).copy()
     x=data.x.to_numpy(float); y=data.y.to_numpy(float)

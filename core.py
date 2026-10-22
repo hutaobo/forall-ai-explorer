@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -78,23 +79,25 @@ def result_context(result, parameters, sources, statistics=None):
     return context
 
 def explain_result(summary, question, api_key=None):
-    system=GLOSSARY+' Return JSON only: {"sentences":["...","..."]}. At most three short factual sentences in the user language. '
+    system=GLOSSARY+' Return JSON only: {"sentences":["...","..."]}. Use concise factual sentences in the user language, enough to address the requested analyses. '
     system+='Only describe supplied data, parameters and computed statistics. Report supplied correlation method, coefficient, paired n and nominal p when available; never invent tests. No extra background, drug mechanisms, cell-line genotypes, growth claims or treatment advice. '
-    system+='A numerically higher score is simply higher, never "significantly higher". State that significance cannot be established from profile values alone. '
+    system+='A numerically higher profile value alone does not establish significance. Use inferential language only when computed tests are supplied. '
+    system+='When group_adjusted is supplied, compare the pooled and adjusted coefficients, report its n, permutation p and bootstrap CI. If BCP_T_sensitivity is supplied, report that separate cohort, its n and exclusions, rather than calling it the full cohort. '
+    system+='These are cell-line lineage groups, not molecular subtypes. Distinguish adjusted association from individual within-group tests; use supplied BH q for those tests. A large p/q does not prove no association, and a residual association does not prove causal independence. '
     system+='Respect data_scope: full records are not a preview. Distinguish total selected, paired and excluded counts. Correlation is exploratory association, not causality; nominal p is unadjusted. Cite the supplied DOI.'
     messages=[{'role':'system','content':system},{'role':'user','content':question+'\n'+json.dumps(summary,ensure_ascii=False)}]
     forbidden=('scaled drug sensitivity','standard error of the mean','均值的标准误','缩放后的药物敏感性',
-               '刺激细胞生长','促进生长','显著高于','无统计学意义','无显著效应','不显著','significantly higher','stimulates growth')
+               '刺激细胞生长','促进生长','stimulates growth')
     for attempt in range(2):
         raw=chat(messages,True,api_key)
         try:
             sentences=json.loads(raw)['sentences']
-            if not isinstance(sentences,list) or not 1<=len(sentences)<=3 or any(not isinstance(x,str) for x in sentences): raise ValueError()
+            if not isinstance(sentences,list) or not sentences or any(not isinstance(x,str) for x in sentences): raise ValueError()
             text='\n\n'.join(sentences)
             if any(t in text.casefold() for t in forbidden): raise ValueError()
             return text
         except (ValueError,KeyError,TypeError):
-            messages.append({'role':'user','content':'Previous output violated the evidence rules. Return only 2 short factual sentences about actual numeric values and lack of uncertainty information. No biological interpretation.'})
+            messages.append({'role':'user','content':'Previous output violated the evidence rules. Return JSON sentences using only supplied numeric results, cohort counts, computed uncertainty and association limitations. Do not invent missing statistics or biology.'})
     raise ValueError('Model explanation failed evidence checks; computed values unchanged.')
 
 def load(root):
@@ -185,23 +188,72 @@ def embedding(frame, method, features, neighbors, distance, seed):
 def validate_controls(raw, frames, metadata):
     """Return only executable UI fields; never display model free-form extras."""
     plan = json.loads(raw) if isinstance(raw, str) else raw
-    kind, module = plan.get('kind'), plan.get('module')
+    if not isinstance(plan,dict):raise ValueError('AI plan must be a JSON object')
+    def layer(value, feature=None):
+        aliases={'protein':'protein','proteins':'protein','proteomics':'protein','protein expression':'protein','protein abundance':'protein','蛋白':'protein','蛋白质':'protein','蛋白表达':'protein','蛋白质表达':'protein',
+                 'drug':'drug','drugs':'drug','drug sensitivity':'drug','drug response':'drug','sdss':'drug','药物':'drug','药敏':'drug','药物敏感性':'drug'}
+        requested=str(value).strip().casefold()
+        normalized=aliases.get(requested)
+        if normalized:return normalized
+        if value is not None and requested not in ('','protein/drug'):return None
+        matches=[k for k in metadata if feature is not None and str(feature).strip().casefold() in {str(f).casefold() for f in frames[k].index}]
+        return matches[0] if len(matches)==1 else None
+    def feature_name(value, kind):
+        if value is None:return None
+        value=str(value).strip()
+        if value in frames[kind].index:return value
+        matches=[f for f in frames[kind].index if str(f).casefold()==value.casefold()]
+        return matches[0] if len(matches)==1 else None
+    kind=layer(plan.get('kind'),plan.get('feature'))
+    module=next((m for m in MODULES if m.casefold()==str(plan.get('module')).strip().casefold()),None)
     if kind not in frames or kind not in metadata: raise ValueError('Unknown layer')
     if module not in MODULES: raise ValueError('Unknown module')
-    feature = plan.get('feature')
-    if feature is not None and feature not in frames[kind].index: raise ValueError('Unknown feature')
+    feature = feature_name(plan.get('feature'),kind)
+    if plan.get('feature') is not None and feature is None: raise ValueError('Unknown feature')
+    if module in ('Profile','Pairwise','Correlation scan') and feature is None:raise ValueError('A feature is required')
     available = metadata[kind].group.unique().tolist()
     groups = plan.get('groups') or available
     if not isinstance(groups,list) or any(not isinstance(g,str) or g not in available for g in groups): raise ValueError('Unknown groups')
     result={'kind':kind,'module':module,'groups':list(dict.fromkeys(groups)),**({'feature':feature} if feature else {})}
     if module=='Pairwise':
-        sk=plan.get('second_kind',kind); sf=plan.get('second_feature')
-        if sk not in metadata or (sf is not None and sf not in frames[sk].index): raise ValueError('Unknown second feature')
+        sk=layer(plan.get('second_kind'),plan.get('second_feature'))
+        if sk not in metadata:raise ValueError('Unknown second layer')
+        sf=feature_name(plan.get('second_feature'),sk)
+        if sf is None: raise ValueError('Unknown second feature')
         result['second_kind']=sk
         if sf:result['second_feature']=sf
-        if plan.get('method') in ('Spearman','Pearson'):result['correlation_method']=plan['method']
+        method=str(plan.get('method',plan.get('correlation_method',''))).strip().casefold()
+        if method not in ('spearman','pearson'):raise ValueError('Unknown correlation method')
+        result['correlation_method']=method.title()
     if module=='Cell-line profile' and plan.get('cell_line') in metadata[kind].index:result['cell_line']=plan['cell_line']
     return result
+
+def plan_controls(question, frames, metadata, api_key=None):
+    """Normalize unambiguous names and repair an invalid model plan once."""
+    options={k:metadata[k].group.unique().tolist() for k in metadata}
+    instruction=GLOSSARY+' Translate the question into a single executable JSON object, without explanation. '
+    instruction+='kind is exactly protein or drug; module is one of '+json.dumps(MODULES)+'. '
+    instruction+='Use Profile for one protein/drug expression plot, Pairwise for a two-feature correlation, Correlation scan for one versus many, and Group comparison only for an explicit test between at least two groups. '
+    instruction+='Set kind, module, feature, groups (array). For Pairwise require second_kind, second_feature, method (Spearman/Pearson). Keep the first mentioned variable on x and the second on y. '
+    instruction+='A request for all paired cell lines must use all available groups in the first layer; mentioning BCP-ALL/T-ALL adjustment does not exclude other groups from the full cohort. The app separately computes the BCP-ALL/T-ALL sensitivity. '
+    instruction+='Example: {"kind":"protein","module":"Pairwise","feature":"BCL2","groups":[],"second_kind":"drug","second_feature":"Venetoclax","method":"Spearman"}. Empty groups means all available groups. '
+    instruction+='Available groups: '+json.dumps(options)+'. For Cell-line profile optionally specify cell_line. Never invent data or statistics.'
+    messages=[{'role':'system','content':instruction},{'role':'user','content':question}]
+    for attempt in range(2):
+        raw=chat(messages,True,api_key)
+        try:
+            plan=validate_controls(raw,frames,metadata)
+            requested=re.search(r'(?:全部|所有|all)\s*(\d+)\s*(?:个)?\s*(?:细胞系|(?:paired\s+)?cell[\s-]*lines)',question,re.I)
+            if plan['module']=='Pairwise' and requested:
+                selected=samples(metadata[plan['kind']],plan['groups'],False)
+                paired=pairwise_table(frames,metadata,plan['kind'],plan['feature'],selected,plan['second_kind'],plan['second_feature']).dropna(subset=['x','y'])
+                if len(paired)!=int(requested.group(1)):
+                    raise ValueError(f"The question requests all {requested.group(1)} paired cell lines, but these groups yield {len(paired)}. Use all available groups for the full cohort; BCP/T adjustment is a separate sensitivity.")
+            return plan
+        except (ValueError,KeyError,TypeError) as error:
+            if attempt:raise ValueError('AI settings could not be validated. Your analysis was not changed.') from None
+            messages += [{'role':'assistant','content':raw if isinstance(raw,str) else json.dumps(raw)},
+                         {'role':'user','content':f'Correct the JSON settings: {error}. Use exactly protein/drug, an exact module name, both feature names for Pairwise, and valid groups. No explanation.'}]
 
 def chat(messages, json_mode=False, api_key=None):
     import urllib.request, urllib.error

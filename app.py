@@ -7,10 +7,10 @@ import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
 from scipy import stats
-from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, correlation_scan, MODULES, validate_controls, GLOSSARY, UNITS, DOI
+from core import load, samples, compare, embedding, plan_controls, explain_result, result_context, pairwise_table, within_group_correlations, correlation_scan, MODULES, UNITS, DOI
 from seekyoo_access import gate, hosted_request, AccessError
 from ui import theme
-from adjusted import group_adjusted
+from adjusted import group_adjusted_cohorts
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
 theme(st)
@@ -80,8 +80,13 @@ def render_analysis():
             computed_statistics['within_group']=json.loads(grouped.to_json(orient='records'))
             computed_statistics['within_group_adjustment']='BH across eligible displayed groups, separately from overall test; groups with n<3 omitted'
             st.metric(f'{method} r',f'{stat.statistic:.3f}');st.caption(f'n={len(clean)} paired sample columns; nominal p={stat.pvalue:.4g}. Exploratory, not causality; replicate inclusion affects independence.')
-            fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate',hover_data=['sample','second_sample','label_harmonized','excel_column'])
-            fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[second_kind]}')
+            colors={'BCP-ALL':'#0072B2','T-ALL':'#E69F00','B-ALL':'#CC79A7'}
+            fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate' if reps else None,hover_data=['sample','second_sample','label_harmonized','excel_column'],color_discrete_map=colors)
+            fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[second_kind]}',template='plotly_white',font_family='Arial',height=530,legend_title_text='Group')
+            st.subheader(f'Paired scatter · {len(clean)} complete pairs')
+            st.plotly_chart(fig,use_container_width=True,config={'toImageButtonOptions':{'format':'svg'}})
+            st.download_button('Download interactive HTML',fig.to_html(include_plotlyjs=True),'forall-plot.html','text/html')
+            fig=None
             st.caption(f'{len(result)-len(clean)} unmatched/missing pairs excluded; {int(clean.label_harmonized.sum())} pairs use audited dataset-specific labels. Original names retained in hover and CSV. No general h-suffix removal.')
             st.caption('Correspondence: published Supplementary Data 1 sample inventory vs Data 3 protein / Data 13 drug headers; COG-LL-319/332/394/402 → corresponding h labels, TMD-5 → TMD5. These are dataset-specific labels, not universal aliases of different culture derivatives.')
             st.subheader('Within-group correlations')
@@ -90,25 +95,42 @@ def render_analysis():
             st.subheader('Group-adjusted association')
             st.caption('Controls categorical cell-line group. Primary analysis: global average ranks, then remove group means; permute within groups. Pearson/linear regression is a sensitivity analysis. Primary columns only.')
             try:
-                adjusted,residuals=group_adjusted(clean.loc[~clean.replicate])
+                cohorts=group_adjusted_cohorts(clean)
+                adjusted=cohorts['all']['statistics'];residuals=cohorts['all']['residuals']
                 computed_statistics['group_adjusted']=adjusted
+                st.caption('Full selected cohort: '+', '.join(f'{g} n={n}' for g,n in adjusted['group_counts'].items()))
                 rank=adjusted['partial_Spearman']; linear=adjusted['linear_model']
                 st.metric('Group-adjusted partial Spearman',f"{rank['coefficient']:.3f}")
                 st.caption(f"n={adjusted['n']}; stratified permutation p={rank['permutation_p']:.4g} (9,999 permutations); stratified bootstrap 95% CI [{rank['bootstrap_95_ci'][0]:.3f}, {rank['bootstrap_95_ci'][1]:.3f}] (2,000 resamples); seed 20261022.")
                 st.write(f"Adjusted Pearson r={adjusted['partial_Pearson']['coefficient']:.3f}; nominal t p={adjusted['partial_Pearson']['nominal_t_p']:.4g}. Common linear slope={linear['slope']:.3f}, HC3 95% CI [{linear['slope_HC3_95_ci'][0]:.3f}, {linear['slope_HC3_95_ci'][1]:.3f}], HC3 approximate p={linear['slope_HC3_t_approx_p']:.4g}.")
                 st.caption(f"Outcome R²: group only={linear['group_only_R2']:.3f}; group + first variable={linear['full_R2']:.3f}; incremental R²={linear['incremental_R2']:.3f}. A common within-group slope is assumed; this is not proof of causal independence or adjustment for all confounders.")
                 st.info('Interpretation: compare this adjusted coefficient with the pooled coefficient above. Residual association after removing group means is evidence beyond group mean differences under this model, not proof of causal independence. Separate group tests have smaller sample sizes and may be less precise. Select only BCP-ALL/T-ALL or turn off label harmonization to check sensitivity.')
+                labels={'all':'All selected primary pairs'}
+                if 'bcp_t' in cohorts:
+                    labels['bcp_t']='BCP-ALL + T-ALL only'
+                    sensitivity=cohorts['bcp_t']['statistics']
+                    computed_statistics['BCP_T_sensitivity']=sensitivity
+                    st.subheader('BCP-ALL / T-ALL sensitivity')
+                    st.caption(f"{sensitivity['n']} complete primary pairs; {sensitivity['excluded_from_full_n']} other-group pairs excluded from this sensitivity only. They remain in the full-cohort scatter and adjustment. Group labels are never reassigned.")
+                    rows=[]
+                    for key,value in cohorts.items():
+                        summary=value['statistics'];r=summary['partial_Spearman']
+                        rows.append({'cohort':labels[key],'n':summary['n'],'partial_Spearman':r['coefficient'],'permutation_p':r['permutation_p'],'CI_low':r['bootstrap_95_ci'][0],'CI_high':r['bootstrap_95_ci'][1]})
+                    st.dataframe(pd.DataFrame(rows),hide_index=True)
+                chosen=st.selectbox('Adjusted scatter cohort',list(cohorts),format_func=lambda key:f"{labels[key]} (n={cohorts[key]['statistics']['n']})")
+                residuals=cohorts[chosen]['residuals']
                 view=st.selectbox('Adjusted scatter',['Group-adjusted global ranks','Group-demeaned original values'])
                 ax,ay=('x_rank_group_residual','y_rank_group_residual') if view=='Group-adjusted global ranks' else ('x_group_residual','y_group_residual')
-                residual_fig=px.scatter(residuals,x=ax,y=ay,color='group',hover_name='sample',hover_data=['second_sample'],
+                residual_fig=px.scatter(residuals,x=ax,y=ay,color='group',hover_name='sample',hover_data=['second_sample'],color_discrete_map=colors,
                     labels={ax:f'{term} · '+('rank residual' if 'rank' in ax else 'group-demeaned '+UNITS[kind]),
                             ay:f'{second} · '+('rank residual' if 'rank' in ay else 'group-demeaned '+UNITS[second_kind])})
                 residual_fig.add_hline(y=0,line_dash='dot',line_color='gray');residual_fig.add_vline(x=0,line_dash='dot',line_color='gray')
                 residual_fig.update_layout(template='plotly_white',font_family='Arial',height=500)
                 st.plotly_chart(residual_fig,use_container_width=True)
-                st.download_button('Download adjusted interactive HTML',residual_fig.to_html(include_plotlyjs=True),'forall-adjusted.html','text/html')
-                st.download_button('Download adjusted data CSV',residuals.to_csv(index=False),'forall-adjusted.csv','text/csv')
-                st.download_button('Download adjustment statistics',json.dumps(adjusted,indent=2),'forall-adjustment.json')
+                st.caption(f"Residual plot cohort: {labels[chosen]}, n={len(residuals)}. The unadjusted scatter above retains all {len(clean)} complete pairs.")
+                st.download_button('Download adjusted interactive HTML',residual_fig.to_html(include_plotlyjs=True),f'forall-adjusted-{chosen}.html','text/html')
+                st.download_button('Download adjusted data CSV',residuals.to_csv(index=False),f'forall-adjusted-{chosen}.csv','text/csv')
+                st.download_button('Download adjustment statistics',json.dumps({key:value['statistics'] for key,value in cohorts.items()},indent=2),'forall-adjustment.json')
             except ValueError as error:
                 st.info(str(error))
             params.update(second=second,second_layer=second_kind,method=method,label_harmonization=harmonize,statistics=computed_statistics)
@@ -186,12 +208,9 @@ with right:
         try:
             if not prompt.strip():
                 st.warning('Enter a prompt, or press Tab in the input to use the example.');st.stop()
-            group_options={k:metadata[k].group.unique().tolist() for k in metadata}
-            instruction=GLOSSARY+' Choose Profile to show or plot one protein/drug in selected groups, including a single group. Use Group comparison only for an explicit statistical comparison of at least two groups. Use Pairwise for an association between two features, Correlation scan for one feature versus many features, Cell-line profile for many features in one cell line, and PCA / UMAP for embedding samples. Never choose Group comparison for a single-group expression plot. Translate into web settings only. Return JSON kind (protein/drug), module from '+json.dumps(MODULES)+', feature, groups(array). For Pairwise also second_kind, second_feature, method(Spearman/Pearson). For Cell-line profile optionally cell_line. No explanation or invented results. For all groups use all available groups in requested layer. Available groups: '+json.dumps(group_options)
             with st.spinner('Reading your prompt and preparing the analysis…'):
                 with hosted_request(identity,prompt):
-                    suggestion=chat([{'role':'system','content':instruction}, {'role':'user','content':prompt}],True,session_key)
-                plan=validate_controls(suggestion,frames,metadata)
+                    plan=plan_controls(prompt,frames,metadata,session_key)
             st.session_state['suggestion']=plan
             st.session_state['pending_controls']=plan
             st.session_state['run_requested']=True
@@ -200,6 +219,7 @@ with right:
             safe_errors={'Seekyoo authorization unavailable or usage limit reached. Return to Seekyoo to retry.',
                          'Permission changed','Permission changed; answer discarded',
                          'OpenLLM credential not configured on the server.',
+                         'AI settings could not be validated. Your analysis was not changed.',
                          'Unknown layer','Unknown module','Unknown feature','Unknown groups','Unknown second feature'}
             if isinstance(error,AccessError) or (isinstance(error,ValueError) and str(error) in safe_errors):st.error(str(error))
             else:st.error(f'OpenLLM could not prepare the analysis ({type(error).__name__}). No analysis changed. Please retry.')
