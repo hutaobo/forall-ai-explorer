@@ -79,6 +79,8 @@ def result_context(result, parameters, sources, statistics=None):
     return context
 
 def explain_result(summary, question, api_key=None):
+    if summary.get('statistics',{}).get('group_adjusted'):
+        return explain_adjusted_result(summary,question,api_key)
     system=GLOSSARY+' Return JSON only: {"sentences":["...","..."]}. Use concise factual sentences in the user language, enough to address the requested analyses. '
     system+='Only describe supplied data, parameters and computed statistics. Report supplied correlation method, coefficient, paired n and nominal p when available; never invent tests. No extra background, drug mechanisms, cell-line genotypes, growth claims or treatment advice. '
     system+='A numerically higher profile value alone does not establish significance. Use inferential language only when computed tests are supplied. '
@@ -99,6 +101,32 @@ def explain_result(summary, question, api_key=None):
         except (ValueError,KeyError,TypeError):
             messages.append({'role':'user','content':'Previous output violated the evidence rules. Return JSON sentences using only supplied numeric results, cohort counts, computed uncertainty and association limitations. Do not invent missing statistics or biology.'})
     raise ValueError('Model explanation failed evidence checks; computed values unchanged.')
+
+def explain_adjusted_result(summary, question, api_key=None):
+    """Render cohort facts from computation; model supplies qualitative interpretation only."""
+    s=summary['statistics']; a=s['group_adjusted']; parts=[]
+    parts.append(f"Pooled {s['method']}: n={s['paired_n']}, coefficient={s['coefficient']:.3f}, nominal p={s['nominal_p']:.4g}.")
+    for label,c in [('Full selected primary cohort',a),('BCP-ALL / T-ALL sensitivity',s.get('BCP_T_sensitivity'))]:
+        if not c:continue
+        r=c['partial_Spearman'];lo,hi=r['bootstrap_95_ci']
+        groups=', '.join(f'{g}: {n}' for g,n in c['group_counts'].items())
+        parts.append(f"{label}: n={c['n']} ({groups}); group-adjusted partial Spearman={r['coefficient']:.3f}; stratified permutation p={r['permutation_p']:.4g}; bootstrap 95% CI [{lo:.3f}, {hi:.3f}].")
+        if 'excluded_from_full_n' in c:
+            parts.append(f"Sensitivity-only exclusions: {c['excluded_from_full_n']} other-group pairs; retained in the full cohort and unadjusted scatter. No group reassignment.")
+    for g in s.get('within_group',[]):
+        parts.append(f"Within {g['group']}: n={g['n']}, {s['method']}={g['coefficient']:.3f}, nominal p={g['nominal_p']:.4g}, BH q={g['q_BH_within_groups']:.4g}.")
+    system=GLOSSARY+' Return JSON only: {"sentences":["..."]}. Explain qualitatively in the user language. The application already renders all numeric and cohort facts verbatim. Do not repeat any numbers, group names, cohort membership or exclusions. Compare pooled and group-adjusted association, uncertainty and within-group evidence. Never infer excluded group counts from missing records. A residual association is not causal independence, does not control all confounders, and weak within-group evidence does not prove absence. No mechanisms or treatment advice.'
+    messages=[{'role':'system','content':system},{'role':'user','content':question+'\n'+json.dumps(s,ensure_ascii=False)}]
+    for attempt in range(2):
+        try:
+            sentences=json.loads(chat(messages,True,api_key))['sentences']
+            if not isinstance(sentences,list) or not sentences or any(not isinstance(x,str) for x in sentences):raise ValueError()
+            text='\n\n'.join(sentences)
+            if re.search(r'\d|BCP|T-ALL|B-ALL|EBV',text,re.I):raise ValueError()
+            return '\n\n'.join(parts+[text,'Source: '+DOI])
+        except (ValueError,KeyError,TypeError):
+            messages.append({'role':'user','content':'Return qualitative sentences only. No numbers or group names: the application renders those computed facts separately.'})
+    raise ValueError('Model interpretation failed cohort evidence checks; computed values unchanged.')
 
 def load(root):
     root = Path(root)
