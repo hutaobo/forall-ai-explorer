@@ -35,6 +35,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/hutaobo/forall-ai-explorer:20261022-v9
+          tags: ghcr.io/hutaobo/forall-ai-explorer:20261022-v10
           cache-from: type=gha
           cache-to: type=gha,mode=max

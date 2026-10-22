@@ -2,7 +2,7 @@ FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py core.py seekyoo_access.py sources.json ./
+COPY app.py core.py adjusted.py seekyoo_access.py sources.json ./
 RUN mkdir -p /home/data && chown 1000:1000 /home/data
 COPY public-data /data/forall
 ENV FORALL_DATA_ROOT=/data/forall PYTHONDONTWRITEBYTECODE=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1 HOME=/tmp NUMBA_CACHE_DIR=/tmp/numba-cache XDG_CACHE_HOME=/tmp/.cache

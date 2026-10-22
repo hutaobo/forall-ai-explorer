@@ -8,6 +8,7 @@ import streamlit as st
 from scipy import stats
 from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, validate_controls, GLOSSARY, UNITS, DOI
 from seekyoo_access import gate, hosted_request
+from adjusted import group_adjusted
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
 identity=gate(st)
@@ -78,6 +79,30 @@ with left:
         st.subheader('Within-group correlations')
         st.dataframe(grouped,hide_index=True)
         st.caption('BH correction across eligible displayed groups for the selected method. Groups with fewer than 3 pairs omitted; pooled association may reflect group differences.')
+        st.subheader('Group-adjusted association')
+        st.caption('Controls categorical cell-line group. Primary analysis: global average ranks, then remove group means; permute within groups. Pearson/linear regression is a sensitivity analysis. Primary columns only.')
+        try:
+            adjusted,residuals=group_adjusted(clean.loc[~clean.replicate])
+            computed_statistics['group_adjusted']=adjusted
+            rank=adjusted['partial_Spearman']; linear=adjusted['linear_model']
+            st.metric('Group-adjusted partial Spearman',f"{rank['coefficient']:.3f}")
+            st.caption(f"n={adjusted['n']}; stratified permutation p={rank['permutation_p']:.4g} (9,999 permutations); stratified bootstrap 95% CI [{rank['bootstrap_95_ci'][0]:.3f}, {rank['bootstrap_95_ci'][1]:.3f}] (2,000 resamples); seed 20261022.")
+            st.write(f"Adjusted Pearson r={adjusted['partial_Pearson']['coefficient']:.3f}; nominal t p={adjusted['partial_Pearson']['nominal_t_p']:.4g}. Common linear slope={linear['slope']:.3f}, HC3 95% CI [{linear['slope_HC3_95_ci'][0]:.3f}, {linear['slope_HC3_95_ci'][1]:.3f}], HC3 approximate p={linear['slope_HC3_t_approx_p']:.4g}.")
+            st.caption(f"Outcome R²: group only={linear['group_only_R2']:.3f}; group + first variable={linear['full_R2']:.3f}; incremental R²={linear['incremental_R2']:.3f}. A common within-group slope is assumed; this is not proof of causal independence or adjustment for all confounders.")
+            st.info('Interpretation: compare this adjusted coefficient with the pooled coefficient above. Residual association after removing group means is evidence beyond group mean differences under this model, not proof of causal independence. Separate group tests have smaller sample sizes and may be less precise. Select only BCP-ALL/T-ALL or turn off label harmonization to check sensitivity.')
+            view=st.selectbox('Adjusted scatter',['Group-adjusted global ranks','Group-demeaned original values'])
+            ax,ay=('x_rank_group_residual','y_rank_group_residual') if view=='Group-adjusted global ranks' else ('x_group_residual','y_group_residual')
+            residual_fig=px.scatter(residuals,x=ax,y=ay,color='group',hover_name='sample',hover_data=['second_sample'],
+                labels={ax:f'{term} · '+('rank residual' if 'rank' in ax else 'group-demeaned '+UNITS[kind]),
+                        ay:f'{second} · '+('rank residual' if 'rank' in ay else 'group-demeaned '+UNITS[second_kind])})
+            residual_fig.add_hline(y=0,line_dash='dot',line_color='gray');residual_fig.add_vline(x=0,line_dash='dot',line_color='gray')
+            residual_fig.update_layout(template='plotly_white',font_family='Arial',height=500)
+            st.plotly_chart(residual_fig,use_container_width=True)
+            st.download_button('Download adjusted interactive HTML',residual_fig.to_html(include_plotlyjs=True),'forall-adjusted.html','text/html')
+            st.download_button('Download adjusted data CSV',residuals.to_csv(index=False),'forall-adjusted.csv','text/csv')
+            st.download_button('Download adjustment statistics',json.dumps(adjusted,indent=2),'forall-adjustment.json')
+        except ValueError as error:
+            st.info(str(error))
         params.update(second=second,second_layer=second_kind,method=method,label_harmonization=harmonize,statistics=computed_statistics)
     elif module=='Group comparison':
         if len(groups)<2:st.warning('Select two groups in the sidebar.');st.stop()
