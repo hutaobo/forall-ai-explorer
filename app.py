@@ -146,7 +146,7 @@ with right:
     st.subheader('OpenLLM assistant')
     session_key=None if identity else st.text_input('OpenLLM API key (optional if configured by host)',type='password',help='Used only in this browser session; not saved to disk.')
     st.caption('Your question and the displayed public-data summary are sent to SciLifeLab OpenLLM only when you click a button. Keys stay server-side.')
-    prompt=st.text_area('Ask / 操作或解释',placeholder='绘制 BCL2 蛋白表达图，选择 T-ALL；或解释当前图中的趋势。')
+    prompt=st.text_area('Ask AI',placeholder='Plot BCL2 protein abundance for T-ALL, or explain the current analysis.')
     if st.button('AI: suggest controls'):
         try:
             group_options={k:metadata[k].group.unique().tolist() for k in metadata}
