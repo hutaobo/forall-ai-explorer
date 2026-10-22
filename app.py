@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy import stats
-from core import load, samples, compare, embedding, chat, explain_result, validate_controls, GLOSSARY, UNITS, DOI
+from core import load, samples, compare, embedding, chat, explain_result, result_context, validate_controls, GLOSSARY, UNITS, DOI
 from seekyoo_access import gate, hosted_request
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
@@ -37,7 +37,7 @@ with st.sidebar:
 meta = metadata[kind]; selected=samples(meta,groups,reps)
 if not selected: st.info('Select at least one group.'); st.stop()
 frame = frames[kind].loc[:,selected]
-result = None; params={'layer':kind,'module':module,'groups':groups,'replicates':reps}
+result = None; computed_statistics={}; params={'layer':kind,'module':module,'groups':groups,'replicates':reps}
 left, right=st.columns([3,1])
 with left:
     st.subheader(module)
@@ -65,6 +65,7 @@ with left:
         clean=result.dropna(subset=['x','y'])
         if len(clean)<3 or clean.x.nunique()<2 or clean.y.nunique()<2:st.warning('At least three paired nonconstant measurements required.');st.stop()
         stat=(stats.spearmanr if method=='Spearman' else stats.pearsonr)(clean.x,clean.y)
+        computed_statistics={'method':method,'coefficient':float(stat.statistic),'nominal_p':float(stat.pvalue),'paired_n':len(clean),'selected_n':len(result),'excluded_n':len(result)-len(clean),'multiple_testing_adjustment':'none; exploratory single selected pair'}
         st.metric(f'{method} r',f'{stat.statistic:.3f}');st.caption(f'n={len(clean)} paired sample columns; nominal p={stat.pvalue:.4g}. Exploratory, not causality; replicate inclusion affects independence.')
         fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate',hover_data=['sample','excel_column'])
         fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[second_kind]}')
@@ -134,7 +135,7 @@ with right:
             st.rerun()
     if st.button('AI: explain current result'):
         try:
-            summary={'parameters':params,'rows':len(result),'preview':json.loads(result.head(12).to_json(orient='records')),'source':sources[kind], 'scope':'Preview only, not all rows. No clinical advice or causal conclusions.'}
+            summary=result_context(result,params,sources,computed_statistics)
             with hosted_request(identity,prompt):
                 answer=explain_result(summary,prompt,api_key=session_key)
             st.write(answer)

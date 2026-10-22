@@ -18,11 +18,25 @@ equate near-zero with statistical nonsignificance, or convert sDSS to IC50. Prot
 a pooled control, not RNA expression. A table of cell lines supplies no error bars, uncertainty or significance unless
 explicitly computed and supplied. A higher sDSS is a higher published score; it does not establish clinical efficacy.'''
 
+def result_context(result, parameters, sources, statistics=None):
+    """Full selected observations for profiles/pairs; full aggregates for large tables."""
+    full = parameters.get('module') in ('Profile', 'Pairwise')
+    context = {'parameters': parameters, 'rows': len(result), 'sources': sources,
+               'statistics': statistics or {}, 'doi': DOI}
+    if full:
+        context.update(data_scope='All selected rows, including missing/unmatched observations; no preview truncation.',
+                       records=json.loads(result.to_json(orient='records')))
+    else:
+        context.update(data_scope='Aggregates computed across all selected rows; individual rows are not supplied.',
+                       numeric_summary=json.loads(result.describe().to_json()) if len(result.select_dtypes('number').columns) else {},
+                       missing_counts=result.isna().sum().to_dict())
+    return context
+
 def explain_result(summary, question, api_key=None):
     system=GLOSSARY+' Return JSON only: {"sentences":["...","..."]}. At most three short factual sentences in the user language. '
-    system+='Only describe the supplied table values and parameters. No extra background, drug mechanisms, cell-line genotypes, growth claims, treatment advice, or significance claims. '
+    system+='Only describe supplied data, parameters and computed statistics. Report supplied correlation method, coefficient, paired n and nominal p when available; never invent tests. No extra background, drug mechanisms, cell-line genotypes, growth claims or treatment advice. '
     system+='A numerically higher score is simply higher, never "significantly higher". State that significance cannot be established from profile values alone. '
-    system+='When the preview is partial, say it covers only the supplied preview. Cite the supplied DOI.'
+    system+='Respect data_scope: full records are not a preview. Distinguish total selected, paired and excluded counts. Correlation is exploratory association, not causality; nominal p is unadjusted. Cite the supplied DOI.'
     messages=[{'role':'system','content':system},{'role':'user','content':question+'\n'+json.dumps(summary,ensure_ascii=False)}]
     forbidden=('scaled drug sensitivity','standard error of the mean','均值的标准误','缩放后的药物敏感性',
                '刺激细胞生长','促进生长','显著高于','无统计学意义','无显著效应','不显著','significantly higher','stimulates growth')
