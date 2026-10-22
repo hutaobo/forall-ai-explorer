@@ -249,6 +249,7 @@ def plan_controls(question, frames, metadata, api_key=None):
                 paired=pairwise_table(frames,metadata,plan['kind'],plan['feature'],selected,plan['second_kind'],plan['second_feature']).dropna(subset=['x','y'])
                 if len(paired)!=int(requested.group(1)):
                     raise ValueError(f"The question requests all {requested.group(1)} paired cell lines, but these groups yield {len(paired)}. Use all available groups for the full cohort; BCP/T adjustment is a separate sensitivity.")
+                plan['reps']=False
             return plan
         except (ValueError,KeyError,TypeError) as error:
             if attempt:raise ValueError('AI settings could not be validated. Your analysis was not changed.') from None

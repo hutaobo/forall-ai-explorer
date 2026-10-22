@@ -119,6 +119,7 @@ def render_analysis():
                     st.dataframe(pd.DataFrame(rows),hide_index=True)
                 chosen=st.selectbox('Adjusted scatter cohort',list(cohorts),format_func=lambda key:f"{labels[key]} (n={cohorts[key]['statistics']['n']})")
                 residuals=cohorts[chosen]['residuals']
+                params.update(adjusted_scatter_cohort=chosen,adjusted_scatter_n=len(residuals))
                 view=st.selectbox('Adjusted scatter',['Group-adjusted global ranks','Group-demeaned original values'])
                 ax,ay=('x_rank_group_residual','y_rank_group_residual') if view=='Group-adjusted global ranks' else ('x_group_residual','y_group_residual')
                 residual_fig=px.scatter(residuals,x=ax,y=ay,color='group',hover_name='sample',hover_data=['second_sample'],color_discrete_map=colors,
