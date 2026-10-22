@@ -25,4 +25,9 @@ with patch.object(core,'load',return_value=(frames,{'protein':meta,'drug':meta},
     assert len(app.dataframe[0].value)==2
     assert app.text_area(key='ask_ai_prompt').value=='Plot BCL2 for T-ALL'
     assert any(b.label=='Explain result' for b in app.button)
+    app.selectbox(key='module').set_value('Group comparison').run()
+    assert not app.exception and any(b.label=='Run AI' for b in app.button)
+    assert next(b for b in app.button if b.label=='Explain result').disabled
+    next(b for b in app.button if b.label=='Run AI').click().run()
+    assert not app.exception and app.selectbox(key='module').value=='Profile'
 print('Synthetic UI fixture passed: Run AI applies validated settings and redraws without an Apply click.')
