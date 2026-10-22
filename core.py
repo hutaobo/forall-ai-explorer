@@ -116,17 +116,19 @@ def explain_adjusted_result(summary, question, api_key=None):
     for g in s.get('within_group',[]):
         parts.append(f"Within {g['group']}: n={g['n']}, {s['method']}={g['coefficient']:.3f}, nominal p={g['nominal_p']:.4g}, BH q={g['q_BH_within_groups']:.4g}.")
     system=GLOSSARY+' Return JSON only: {"sentences":["..."]}. Explain qualitatively in the user language. The application already renders all numeric and cohort facts verbatim. Do not repeat any numbers, group names, cohort membership or exclusions. Compare pooled and group-adjusted association, uncertainty and within-group evidence. Never infer excluded group counts from missing records. A residual association is not causal independence, does not control all confounders, and weak within-group evidence does not prove absence. These are categorical cell-line lineage groups, never molecular subtypes. Do not call the association independent; say conditional on the supplied grouping. A similar pooled adjusted estimate in the sensitivity cohort does not demonstrate a robust association inside each group. No mechanisms or treatment advice.'
-    messages=[{'role':'system','content':system},{'role':'user','content':question+'\n'+json.dumps(s,ensure_ascii=False)}]
+    language='Chinese' if re.search(r'[\u4e00-\u9fff]',question) else 'English'
+    messages=[{'role':'system','content':system},{'role':'user','content':'Computed evidence: '+json.dumps(s,ensure_ascii=False)+'\nInterpret only the pooled versus group-adjusted association and within-group uncertainty in '+language+'. Numeric facts and cohort inventory are already displayed. Omit all numbers, names, subtypes and independence/robustness claims.'}]
     for attempt in range(2):
         try:
             sentences=json.loads(chat(messages,True,api_key))['sentences']
             if not isinstance(sentences,list) or not sentences or any(not isinstance(x,str) for x in sentences):raise ValueError()
             text='\n\n'.join(sentences)
-            if re.search(r'\d|BCP|T-ALL|B-ALL|EBV|亚型|subtype|独立关联|independent association|稳健|robust',text,re.I):raise ValueError()
+            if re.search(r'\d|BCP|T-ALL|B-ALL|EBV|亚型|subtype|独立关联|independent association|稳健|robust',text.replace('BCL2',''),re.I):raise ValueError()
             return '\n\n'.join(parts+[text,'Source: '+DOI])
         except (ValueError,KeyError,TypeError):
             messages.append({'role':'user','content':'Return qualitative sentences only. No numbers or group names: the application renders those computed facts separately.'})
-    raise ValueError('Model interpretation failed cohort evidence checks; computed values unchanged.')
+    fallback='AI wording did not pass the cohort checks. The verified numeric results above remain available; retry for an AI interpretation.'
+    return '\n\n'.join(parts+[fallback,'Source: '+DOI])
 
 def load(root):
     root = Path(root)

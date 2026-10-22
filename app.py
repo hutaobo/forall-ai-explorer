@@ -242,7 +242,8 @@ with right:
                 answer=explain_result(summary,prompt,api_key=session_key)
             st.write(answer)
         except AccessError as error:st.error(str(error))
-        except Exception:st.error('OpenLLM unavailable; your computed result remains available.')
+        except ValueError:st.error('AI interpretation did not pass evidence checks; your computed result remains available. Please retry.')
+        except Exception:st.error('OpenLLM service request failed; your computed result remains available. Please retry.')
     with st.expander('Data provenance'):st.json(sources)
     with st.expander('Trial scope and original FORALL coverage'):
         st.write('Independent AI-assisted protein/drug explorer; not a full replacement of original FORALL. Includes profiles, pairwise/group-adjusted correlations, full-layer correlation scans/ranks, cell-line profiles, exploratory group tests, sample-wise PCA/UMAP, metadata and exports.')

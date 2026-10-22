@@ -42,3 +42,8 @@ with patch('core.chat',side_effect=[json.dumps({'sentences':['EBV has 2 excluded
     assert model.call_count==2 and 'B-ALL: 2' in answer and 'EBV' not in answer
     assert 'n=43' in answer and 'p=0.0152' in answer
 print('Passed: computed cohort facts rendered verbatim; invented model counts rejected and repaired.')
+for phrase in ['其他亚型样本','independent association','支持各组内关联的稳健性']:
+    with patch('core.chat',side_effect=[json.dumps({'sentences':[phrase]},ensure_ascii=False),json.dumps({'sentences':['This is a conditional association, not a causal result.']})]) as model:
+        answer=explain_result({'statistics':fixture},'synthetic interpretation guard')
+        assert model.call_count==2 and phrase not in answer
+print('Passed: observed subtype, independent-association and robustness overclaims rejected.')
