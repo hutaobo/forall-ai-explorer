@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from scipy import stats
-from core import load, samples, compare, embedding, chat, explain_result, result_context, validate_controls, GLOSSARY, UNITS, DOI
+from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, validate_controls, GLOSSARY, UNITS, DOI
 from seekyoo_access import gate, hosted_request
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
@@ -61,16 +61,24 @@ with left:
         other=frames[second_kind]
         second=st.selectbox('Second protein / drug',other.index.tolist(),index=other.index.get_loc('NR3C1' if second_kind=='protein' else 'Dexamethasone'))
         method=st.selectbox('Correlation',['Spearman','Pearson'])
-        result=meta.loc[selected].copy();result['x']=frame.loc[term];result['y']=other.loc[second].reindex(selected)
+        harmonize=st.checkbox('Use audited FORALL label harmonization',value=True)
+        result=pairwise_table(frames,metadata,kind,term,selected,second_kind,second,harmonize)
         clean=result.dropna(subset=['x','y'])
         if len(clean)<3 or clean.x.nunique()<2 or clean.y.nunique()<2:st.warning('At least three paired nonconstant measurements required.');st.stop()
         stat=(stats.spearmanr if method=='Spearman' else stats.pearsonr)(clean.x,clean.y)
         computed_statistics={'method':method,'coefficient':float(stat.statistic),'nominal_p':float(stat.pvalue),'paired_n':len(clean),'selected_n':len(result),'excluded_n':len(result)-len(clean),'multiple_testing_adjustment':'none; exploratory single selected pair'}
+        grouped=within_group_correlations(clean,method)
+        computed_statistics['within_group']=json.loads(grouped.to_json(orient='records'))
+        computed_statistics['within_group_adjustment']='BH across eligible displayed groups, separately from overall test; groups with n<3 omitted'
         st.metric(f'{method} r',f'{stat.statistic:.3f}');st.caption(f'n={len(clean)} paired sample columns; nominal p={stat.pvalue:.4g}. Exploratory, not causality; replicate inclusion affects independence.')
-        fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate',hover_data=['sample','excel_column'])
+        fig=px.scatter(clean,x='x',y='y',color='group',symbol='replicate',hover_data=['sample','second_sample','label_harmonized','excel_column'])
         fig.update_layout(xaxis_title=f'{term} · {UNITS[kind]}',yaxis_title=f'{second} · {UNITS[second_kind]}')
-        st.caption(f'Cross-layer pairing uses exact published sample names only; {len(result)-len(clean)} unmatched/missing pairs excluded. Aliases are not silently merged.')
-        params.update(second=second,second_layer=second_kind,method=method)
+        st.caption(f'{len(result)-len(clean)} unmatched/missing pairs excluded; {int(clean.label_harmonized.sum())} pairs use audited dataset-specific labels. Original names retained in hover and CSV. No general h-suffix removal.')
+        st.caption('Correspondence: published Supplementary Data 1 sample inventory vs Data 3 protein / Data 13 drug headers; COG-LL-319/332/394/402 → corresponding h labels, TMD-5 → TMD5. These are dataset-specific labels, not universal aliases of different culture derivatives.')
+        st.subheader('Within-group correlations')
+        st.dataframe(grouped,hide_index=True)
+        st.caption('BH correction across eligible displayed groups for the selected method. Groups with fewer than 3 pairs omitted; pooled association may reflect group differences.')
+        params.update(second=second,second_layer=second_kind,method=method,label_harmonization=harmonize,statistics=computed_statistics)
     elif module=='Group comparison':
         if len(groups)<2:st.warning('Select two groups in the sidebar.');st.stop()
         a=st.selectbox('Group A',groups);b=st.selectbox('Group B',groups,index=1)

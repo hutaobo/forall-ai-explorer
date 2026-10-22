@@ -64,3 +64,5 @@ The original 2023 FORALL app paper reports 12,326 proteins; these versions are
 not assumed equivalent. RNA data are not bundled in this release.
 
 Data license: CC BY 4.0, see sources.json. Software: MIT (LICENSE).
+
+AI context update (2026-10-22): Profile and Pairwise send all selected records, including missing values, plus computed correlation statistics and provenance. Other large-table modules send full-table numeric aggregates with an explicit scope; no hidden first12-row preview. The model explains computed results; it does not calculate the correlation.

@@ -11,6 +11,35 @@ FILES = {'protein': '41467_2022_29224_MOESM4_ESM.xlsx', 'drug': '41467_2022_2922
          'cells': '41467_2022_29224_MOESM2_ESM.xlsx', 'drugs': '41467_2022_29224_MOESM7_ESM.xlsx'}
 UNITS = {'protein': 'log2 relative protein abundance', 'drug': 'sDSS'}
 DOI = 'https://doi.org/10.1038/s41467-022-29224-5'
+# Dataset-specific label correspondence from Supplementary Data 1, 3 and 13.
+# Not a general rule: h/non-h COG derivatives may be distinct cell lines elsewhere.
+FORALL_PROTEIN_LABELS = {'COG-LL-319':'COG-LL-319h','COG-LL-332':'COG-LL-332h',
+                       'COG-LL-394':'COG-LL-394h','COG-LL-402':'COG-LL-402h','TMD-5':'TMD5'}
+
+def pairwise_table(frames, metadata, kind, feature, selected, second_kind, second, harmonize=True):
+    def canonical(name, layer):
+        return FORALL_PROTEIN_LABELS.get(name,name) if harmonize and layer=='protein' else name
+    other=frames[second_kind].loc[second]
+    lookup={canonical(s,second_kind):s for s in other.index if '_BR' not in s}
+    if len(lookup)!=sum('_BR' not in s for s in other.index):
+        raise ValueError('Canonical sample collision; refusing ambiguous pairing.')
+    out=metadata[kind].loc[selected].copy()
+    out['x']=frames[kind].loc[feature,selected]
+    # Preserve same-layer replicate behavior; never match a replicate to a primary.
+    out['second_sample']=[s if s in other.index else lookup.get(canonical(s,kind)) for s in selected]
+    out['y']=[other.get(s,float('nan')) for s in out.second_sample]
+    out['label_harmonized']=[isinstance(t,str) and s!=t for s,t in zip(selected,out.second_sample)]
+    return out
+
+def within_group_correlations(clean, method):
+    rows=[]
+    for group, block in clean.groupby('group'):
+        if len(block)<3 or block.x.nunique()<2 or block.y.nunique()<2: continue
+        s=(stats.spearmanr if method=='Spearman' else stats.pearsonr)(block.x,block.y)
+        rows.append({'group':group,'n':len(block),'coefficient':float(s.statistic),'nominal_p':float(s.pvalue)})
+    result=pd.DataFrame(rows)
+    if len(result): result['q_BH_within_groups']=bh(result.nominal_p)
+    return result
 GLOSSARY = '''FORALL data dictionary: SEM and REH are named leukemia CELL LINES, never error measures.
 sDSS means SELECTIVE drug sensitivity score, normalized to normal bone marrow response using a modified AUC metric.
 Do not call sDSS scaled/standardized DSS, invent a universal numerical range, interpret negative values as stimulated growth,

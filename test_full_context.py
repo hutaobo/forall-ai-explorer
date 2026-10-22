@@ -33,5 +33,11 @@ assert sum(r['x'] is not None and r['y'] is not None for r in payload['records']
 target=Path(os.environ.get('FORALL_REPORT_ROOT','.'))
 target.mkdir(parents=True,exist_ok=True)
 clean.to_csv(target/'bcl2-venetoclax-pairs.csv',index=False)
+import plotly.express as px
+fig=px.scatter(clean,x='x',y='y',color='group',hover_name='sample',
+               labels={'x':'BCL2 · log2 relative protein abundance','y':'Venetoclax · sDSS','group':'Cell-line group'})
+fig.update_layout(template='plotly_white',font_family='Arial',height=600,
+                  title='BCL2 and Venetoclax · 38 exact-name pairs · Spearman ρ=0.777')
+fig.write_html(target/'bcl2-venetoclax-interactive.html',include_plotlyjs=True)
 (target/'bcl2-venetoclax-statistics.json').write_text(json.dumps(out,indent=2))
 print(json.dumps(out))
