@@ -8,10 +8,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 from scipy import stats
 from core import load, samples, compare, embedding, chat, explain_result, result_context, pairwise_table, within_group_correlations, correlation_scan, MODULES, validate_controls, GLOSSARY, UNITS, DOI
-from seekyoo_access import gate, hosted_request
+from seekyoo_access import gate, hosted_request, AccessError
+from ui import theme
 from adjusted import group_adjusted
 
 st.set_page_config(page_title='FORALL AI Explorer',page_icon='🧬',layout='wide')
+theme(st)
 identity=gate(st)
 st.title('FORALL · AI Explorer')
 st.caption('Interactive published-data research · SciLifeLab OpenLLM · Independent implementation, not endorsed by the original authors')
@@ -196,7 +198,7 @@ with right:
                          'Permission changed','Permission changed; answer discarded',
                          'OpenLLM credential not configured on the server.',
                          'Unknown layer','Unknown module','Unknown feature','Unknown groups','Unknown second feature'}
-            if isinstance(error,ValueError) and str(error) in safe_errors:st.error(str(error))
+            if isinstance(error,AccessError) or (isinstance(error,ValueError) and str(error) in safe_errors):st.error(str(error))
             else:st.error(f'OpenLLM could not prepare the analysis ({type(error).__name__}). No analysis changed. Please retry.')
     if 'suggestion' in st.session_state:
         plan=st.session_state['suggestion'];st.json(plan)
@@ -215,6 +217,7 @@ with right:
             with hosted_request(identity,prompt):
                 answer=explain_result(summary,prompt,api_key=session_key)
             st.write(answer)
+        except AccessError as error:st.error(str(error))
         except Exception:st.error('OpenLLM unavailable; your computed result remains available.')
     with st.expander('Data provenance'):st.json(sources)
     with st.expander('Trial scope and original FORALL coverage'):

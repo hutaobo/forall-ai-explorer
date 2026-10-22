@@ -8,12 +8,17 @@ from pathlib import Path
 import sqlite3
 import time
 import urllib.request
+import urllib.error
 import uuid
+from ui import sign_in, account
 
 PLATFORM = 'https://app.seekyoo.com'
 AUDIENCE = 'https://forall-ai-explorer.serve.scilifelab.se'
 PROTOCOL = 'seekyoo-forall-session/1'
 AGENT = 'a92604df-ec7c-462c-a246-32e179d11b8f'
+
+class AccessError(ValueError):
+    """A safe, user-facing platform status without response or credential data."""
 
 def private_root():
     root = Path(os.environ.get('FORALL_PRIVATE_ROOT', '/home/data/forall-private'))
@@ -29,8 +34,14 @@ def request_json(path, body=None):
         with urllib.request.urlopen(req, timeout=20) as response:
             if response.geturl() != url: raise ValueError('Unexpected platform redirect')
             return json.loads(response.read(16000))
+    except urllib.error.HTTPError as error:
+        messages={401:'Your Seekyoo session expired. Reopen FORALL through Seekyoo.',
+                  403:'This Seekyoo account does not currently have access.',
+                  409:'FORALL changed. Reopen it through Seekyoo.',
+                  429:'Seekyoo is temporarily busy. Please retry shortly.'}
+        raise AccessError(messages.get(error.code,f'Seekyoo account verification is unavailable (HTTP {error.code}). Please retry.')) from None
     except Exception:
-        raise ValueError('Seekyoo authorization unavailable or usage limit reached. Return to Seekyoo to retry.') from None
+        raise AccessError('Cannot reach Seekyoo to verify your account. Please retry shortly.') from None
 
 def decode_session(token, public_key, now=None):
     from cryptography.hazmat.primitives.serialization import load_pem_public_key
@@ -87,16 +98,20 @@ def gate(st):
             claims=redeem_session(token,public['public_key'])
             st.session_state['seekyoo_session']={'token':token,'claims':claims}
         except Exception:
-            st.error('登录链接已过期或不可用，请从 Seekyoo 重新打开。 / Reopen through Seekyoo.')
+            sign_in(st,expired=True)
             st.stop()
     identity=st.session_state.get('seekyoo_session')
     if not identity or identity['claims']['exp']<=time.time():
-        st.info('请登录 Seekyoo 后打开交互分析。 / Sign in through Seekyoo to use this tool.')
-        st.link_button('Open through Seekyoo',PLATFORM+'/api/play/tools/forall/launch')
+        sign_in(st,expired=bool(identity))
         st.stop()
+    try:
+        identity['account']=request_json('calls',{'action':'authorize','token':identity['token']})
+    except AccessError as error:
+        sign_in(st)
+        st.error(str(error));st.stop()
     os.environ['OPENLLM_KEY_FILE']=str(private_root()/'openllm-key')
     if (private_root()/'openllm-key').is_file(): os.chmod(private_root()/'openllm-key',0o600)
-    st.caption('Seekyoo member session · AI provided by the administrator · session valid for up to one hour')
+    account(st,identity)
     if identity['claims']['admin']:
         with st.expander('Administrator: OpenLLM connection'):
             configured=(private_root()/'openllm-key').is_file()
@@ -110,21 +125,12 @@ def gate(st):
 
 @contextmanager
 def hosted_request(identity, question):
-    # The existing marketplace deliberately excludes self-calls. The verified
-    # owner may test their own shared connection without impersonating a member
-    # or changing that marketplace policy. Member calls retain its quotas.
-    if identity is None or identity['claims']['admin']:
+    # Independent explorer trial: live eligibility checks, no marketplace budget.
+    # The original agent's reserve/validate/finish policy is unchanged.
+    if identity is None:
         yield
         return
-    token=identity['token']
-    reservation=request_json('calls',{'action':'reserve','token':token,'intent_id':str(uuid.uuid4()),
-                                    'input_sha256':hashlib.sha256(question.encode()).hexdigest()})
-    call_id=reservation['call_id']; success=False
-    try:
-        if not request_json('calls',{'action':'validate','token':token,'call_id':call_id}).get('valid'):
-            raise ValueError('Permission changed')
-        yield
-        success=True
-    finally:
-        result=request_json('calls',{'action':'finish','token':token,'call_id':call_id,'success':success})
-        if success and not result.get('finished'): raise ValueError('Permission changed; answer discarded')
+    request={'action':'authorize','token':identity['token']}
+    request_json('calls',request)
+    yield
+    request_json('calls',request)

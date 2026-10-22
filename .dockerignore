@@ -1,5 +1,6 @@
 *
 !app.py
+!ui.py
 !prompt_completion.js
 !core.py
 !adjusted.py
